@@ -62,12 +62,10 @@ class E2eSpec extends WordSpec with Matchers {
 
       def run[F[_]](implicit E: ConcurrentEffect[F]) = for {
         managedChannel <- managedChannelStream[F]
-        publisher = PublisherFs2Grpc.stub[F](managedChannel, CallOptions.DEFAULT.withCallCredentials(MoreCallCredentials.from(creds)))
+        publisher = PublisherFs2Grpc.stub[F](managedChannel, CallOptions.DEFAULT.withCallCredentials(MoreCallCredentials.from(GoogleCredentials.getApplicationDefault())))
         subscriber = SubscriberFs2Grpc.stub[F](managedChannel, CallOptions.DEFAULT.withCallCredentials(MoreCallCredentials.from(creds)))
-//        topic <- Stream.eval(buildTopic[F](publisher))
-//        subsc <- Stream.eval(createSubscription[F](subscriber)(topic))
-        _ <-  Stream.eval(produceMessages(publisher)("projects/gcp-playground-228403/topics/test-topic", 1 to 1000 map { _.toString }))
-        out <- Subscriber.stream[F]("projects/gcp-playground-228403/subscriptions/test-sub")(E, subscriber)
+        producerStream = Stream.eval(produceMessages(publisher)("projects/gcp-playground-228403/topics/test-topic", 1 to 1000 map { _.toString }))
+        out <- Subscriber.stream[F]("pubsub.googleapis.com", "projects/gcp-playground-228403/subscriptions/test-sub").concurrently(producerStream)
 //        commited <- Subscriber.commit[F]("projects/gcp-playground-228403/subscriptions/test-sub")(out.map(_.ackId).toArray:_*)(E, subscriber)
       } yield out
 

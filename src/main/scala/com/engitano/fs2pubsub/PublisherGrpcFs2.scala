@@ -2,7 +2,7 @@ package com.engitano.fs2pubsub
 
 import _root_.cats.implicits._
 
-trait PublisherFs2Grpc[F[_]] {
+private [fs2pubsub]trait PublisherFs2Grpc[F[_]] {
   def createTopic(request: com.google.api.pubsub.Topic, clientHeaders: _root_.io.grpc.Metadata): F[com.google.api.pubsub.Topic]
   def updateTopic(request: com.google.api.pubsub.UpdateTopicRequest, clientHeaders: _root_.io.grpc.Metadata): F[com.google.api.pubsub.Topic]
   def publish(request: com.google.api.pubsub.PublishRequest, clientHeaders: _root_.io.grpc.Metadata): F[com.google.api.pubsub.PublishResponse]
@@ -12,7 +12,7 @@ trait PublisherFs2Grpc[F[_]] {
   def listTopicSnapshots(request: com.google.api.pubsub.ListTopicSnapshotsRequest, clientHeaders: _root_.io.grpc.Metadata): F[com.google.api.pubsub.ListTopicSnapshotsResponse]
   def deleteTopic(request: com.google.api.pubsub.DeleteTopicRequest, clientHeaders: _root_.io.grpc.Metadata): F[com.google.protobuf.empty.Empty]
 }
-object PublisherFs2Grpc {
+private [fs2pubsub]object PublisherFs2Grpc {
   def stub[F[_]: _root_.cats.effect.ConcurrentEffect](channel: _root_.io.grpc.Channel, callOptions: _root_.io.grpc.CallOptions = _root_.io.grpc.CallOptions.DEFAULT)(implicit ec: _root_.scala.concurrent.ExecutionContext): PublisherFs2Grpc[F] = new PublisherFs2Grpc[F] {
     def createTopic(request: com.google.api.pubsub.Topic, clientHeaders: _root_.io.grpc.Metadata): F[com.google.api.pubsub.Topic] = {
       _root_.org.lyranthe.fs2_grpc.java_runtime.client.Fs2ClientCall[F](channel, _root_.com.google.api.pubsub.PublisherGrpc.METHOD_CREATE_TOPIC, callOptions).flatMap(_.unaryToUnaryCall(request, clientHeaders))
