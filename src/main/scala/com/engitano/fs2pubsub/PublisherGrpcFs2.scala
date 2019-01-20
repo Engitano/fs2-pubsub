@@ -13,7 +13,7 @@ private [fs2pubsub]trait PublisherFs2Grpc[F[_]] {
   def deleteTopic(request: com.google.api.pubsub.DeleteTopicRequest, clientHeaders: _root_.io.grpc.Metadata): F[com.google.protobuf.empty.Empty]
 }
 private [fs2pubsub]object PublisherFs2Grpc {
-  def stub[F[_]: _root_.cats.effect.ConcurrentEffect](channel: _root_.io.grpc.Channel, callOptions: _root_.io.grpc.CallOptions = _root_.io.grpc.CallOptions.DEFAULT)(implicit ec: _root_.scala.concurrent.ExecutionContext): PublisherFs2Grpc[F] = new PublisherFs2Grpc[F] {
+  def stub[F[_]: _root_.cats.effect.ConcurrentEffect](channel: _root_.io.grpc.Channel, callOptions: _root_.io.grpc.CallOptions = _root_.io.grpc.CallOptions.DEFAULT): PublisherFs2Grpc[F] = new PublisherFs2Grpc[F] {
     def createTopic(request: com.google.api.pubsub.Topic, clientHeaders: _root_.io.grpc.Metadata): F[com.google.api.pubsub.Topic] = {
       _root_.org.lyranthe.fs2_grpc.java_runtime.client.Fs2ClientCall[F](channel, _root_.com.google.api.pubsub.PublisherGrpc.METHOD_CREATE_TOPIC, callOptions).flatMap(_.unaryToUnaryCall(request, clientHeaders))
     }
@@ -38,18 +38,5 @@ private [fs2pubsub]object PublisherFs2Grpc {
     def deleteTopic(request: com.google.api.pubsub.DeleteTopicRequest, clientHeaders: _root_.io.grpc.Metadata): F[com.google.protobuf.empty.Empty] = {
       _root_.org.lyranthe.fs2_grpc.java_runtime.client.Fs2ClientCall[F](channel, _root_.com.google.api.pubsub.PublisherGrpc.METHOD_DELETE_TOPIC, callOptions).flatMap(_.unaryToUnaryCall(request, clientHeaders))
     }
-  }
-  def bindService[F[_]: _root_.cats.effect.ConcurrentEffect](serviceImpl: PublisherFs2Grpc[F])(implicit ec: _root_.scala.concurrent.ExecutionContext): _root_.io.grpc.ServerServiceDefinition = {
-    _root_.io.grpc.ServerServiceDefinition
-      .builder(_root_.com.google.api.pubsub.PublisherGrpc.SERVICE)
-      .addMethod(_root_.com.google.api.pubsub.PublisherGrpc.METHOD_CREATE_TOPIC, _root_.org.lyranthe.fs2_grpc.java_runtime.server.Fs2ServerCallHandler[F].unaryToUnaryCall(serviceImpl.createTopic))
-      .addMethod(_root_.com.google.api.pubsub.PublisherGrpc.METHOD_UPDATE_TOPIC, _root_.org.lyranthe.fs2_grpc.java_runtime.server.Fs2ServerCallHandler[F].unaryToUnaryCall(serviceImpl.updateTopic))
-      .addMethod(_root_.com.google.api.pubsub.PublisherGrpc.METHOD_PUBLISH, _root_.org.lyranthe.fs2_grpc.java_runtime.server.Fs2ServerCallHandler[F].unaryToUnaryCall(serviceImpl.publish))
-      .addMethod(_root_.com.google.api.pubsub.PublisherGrpc.METHOD_GET_TOPIC, _root_.org.lyranthe.fs2_grpc.java_runtime.server.Fs2ServerCallHandler[F].unaryToUnaryCall(serviceImpl.getTopic))
-      .addMethod(_root_.com.google.api.pubsub.PublisherGrpc.METHOD_LIST_TOPICS, _root_.org.lyranthe.fs2_grpc.java_runtime.server.Fs2ServerCallHandler[F].unaryToUnaryCall(serviceImpl.listTopics))
-      .addMethod(_root_.com.google.api.pubsub.PublisherGrpc.METHOD_LIST_TOPIC_SUBSCRIPTIONS, _root_.org.lyranthe.fs2_grpc.java_runtime.server.Fs2ServerCallHandler[F].unaryToUnaryCall(serviceImpl.listTopicSubscriptions))
-      .addMethod(_root_.com.google.api.pubsub.PublisherGrpc.METHOD_LIST_TOPIC_SNAPSHOTS, _root_.org.lyranthe.fs2_grpc.java_runtime.server.Fs2ServerCallHandler[F].unaryToUnaryCall(serviceImpl.listTopicSnapshots))
-      .addMethod(_root_.com.google.api.pubsub.PublisherGrpc.METHOD_DELETE_TOPIC, _root_.org.lyranthe.fs2_grpc.java_runtime.server.Fs2ServerCallHandler[F].unaryToUnaryCall(serviceImpl.deleteTopic))
-      .build()
   }
 }
