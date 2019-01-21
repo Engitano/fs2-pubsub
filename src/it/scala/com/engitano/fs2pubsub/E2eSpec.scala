@@ -82,7 +82,7 @@ class E2eSpec extends WordSpec with Matchers with DockerPubSubService with Befor
       run[IO]
         .take(msgCount)
         .compile.toList.attempt.unsafeRunSync() match {
-        case Right(v)    => v.map(_.wrapped) shouldBe (1 to msgCount)
+        case Right(v)    => v.map(_.payload) shouldBe (1 to msgCount)
         case Left(value) => throw value
       }
     }

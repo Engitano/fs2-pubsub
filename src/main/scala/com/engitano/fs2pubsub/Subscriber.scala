@@ -28,10 +28,15 @@ import org.lyranthe.fs2_grpc.java_runtime.syntax.all._
 
 case object EmptyPubsubMessageException extends Exception
 
-case class WithAckId[A](wrapped: A, ackId: String) {
-  def map[B](f: A => B): WithAckId[B] = this.copy(wrapped = f(this.wrapped))
+case class WithAckId[A](payload: A, ackId: String) {
+  def map[B](f: A => B): WithAckId[B] = this.copy(payload = f(this.payload))
 
-  def mapW[B](f: WithAckId[A] => B) : WithAckId[B] = this.copy(wrapped = f(this))
+  def mapW[B](f: WithAckId[A] => B) : WithAckId[B] = this.copy(payload = f(this))
+
+  def peek(f: A => Unit): WithAckId[A] = {
+    f(payload)
+    this
+  }
 }
 
 object WithAckId {
