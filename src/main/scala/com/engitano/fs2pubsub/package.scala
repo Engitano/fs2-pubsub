@@ -16,8 +16,10 @@
 
 package com.engitano
 
+import cats.effect.ConcurrentEffect
 import com.google.auth.Credentials
 import com.google.auth.oauth2.GoogleCredentials
+import fs2.Stream
 import io.grpc.{CallCredentials, CallOptions, ManagedChannelBuilder}
 import io.grpc.auth.MoreCallCredentials
 
@@ -52,5 +54,16 @@ package object fs2pubsub {
         channel
       }
     }
+  }
+
+  object syntax {
+
+    implicit def toOps[F[_] : ConcurrentEffect, T](s: Stream[F, T])(implicit psm: ToPubSubMessage[F, T]): PublisherSyntax[F, T] =
+      new PublisherSyntax[F, T](s)
+
+    class PublisherSyntax[F[_] : ConcurrentEffect, T](s: Stream[F, T])(implicit psm: ToPubSubMessage[F, T]) {
+      def toPubSub(topic: String, cfg: GrpcPubsubConfig): Stream[F, String] = Publisher.stream(topic, cfg)(s)
+    }
+
   }
 }

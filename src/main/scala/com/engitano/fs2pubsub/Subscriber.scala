@@ -20,7 +20,7 @@ import cats.Functor
 import cats.implicits._
 import cats.effect.{ConcurrentEffect, Sync}
 import com.google.api.pubsub.{ReceivedMessage, StreamingPullRequest, StreamingPullResponse, SubscriberGrpc}
-import fs2.Stream
+import fs2.{Pipe, Stream}
 import fs2.concurrent.Queue
 import io.grpc._
 import org.lyranthe.fs2_grpc.java_runtime.client.Fs2ClientCall
@@ -120,27 +120,31 @@ object Subscriber {
     PubSubStream[F, A](cfg.host, cfg.subscriptionName(subscription), cfg)
 
   case class PubSubStream[F[_],A] private[Subscriber](host: String, subscription: String, cfg: GrpcPubsubConfig){
-    def apply[B: HasAckId](f: Stream[F,WithAckId[A]] => Stream[F, B])
+    def apply[B: HasAckId](pipe: Pipe[F,WithAckId[A], B])
                                 (implicit S: ConcurrentEffect[F], FP: FromPubSubMessage[F, A]): Stream[F, B] = {
       cfg.channelBuilder
-        .stream[F] flatMap { channel =>
+        .stream[F].flatMap[F, B] { channel =>
 
-        Stream.eval(Queue.unbounded[F, StreamingPullRequest]) flatMap { requestQueue =>
+        Stream.eval(Queue.unbounded[F, StreamingPullRequest]).flatMap[F, B] { requestQueue =>
           def queueNext(req: StreamingPullRequest): F[Unit] = {
             requestQueue.enqueue1(req).as(())
           }
 
+          val kickOff = Stream.eval(queueNext(StreamingPullRequest(subscription, Seq(), Seq(), Seq(), ACK_DEADLINE_SECONDS)))
+          val doPull = streamingPull(channel, cfg.callOps, requestQueue.dequeue, new Metadata()).evalMap(deserialize)
+
           for {
-            _ <- Stream.eval(queueNext(StreamingPullRequest(subscription, Seq(), Seq(), Seq(), ACK_DEADLINE_SECONDS)))
-            resp <- streamingPull(channel, cfg.callOps, requestQueue.dequeue, new Metadata())
-              .evalMap(_.receivedMessages.toList.traverse[F,WithAckId[A]](r => FP.from(r).map(t => WithAckId(t, r.ackId))))
-              .flatMap(_.foldLeft[Stream[F,WithAckId[A]]](Stream.empty)((s,n) => s ++ Stream.emit(n)))
-            st <- f(Stream.emit(resp))
-            r <- Stream.emit(st) ++ Stream.eval_(queueNext(StreamingPullRequest(ackIds = Seq(st.ackId))))
-          } yield r
+            chunks <- kickOff >> doPull
+            emit <- chunks.foldLeft[Stream[F, WithAckId[A]]](Stream.empty)((s, n) => s ++ Stream.emit(n)).through(pipe)
+            emitAndCommit <- Stream.emit(emit) ++ Stream.eval_(queueNext(StreamingPullRequest(ackIds = Seq(emit.ackId))))
+          } yield emitAndCommit
         }
       }
     }
+
+    private def deserialize(spr: StreamingPullResponse)
+                           (implicit S: ConcurrentEffect[F], FP: FromPubSubMessage[F, A]) =
+      spr.receivedMessages.toList.traverse[F, WithAckId[A]](r => FP.from(r).map(t => WithAckId(t, r.ackId)))
 
     private def streamingPull[F[_]: ConcurrentEffect](
                                                        channel: Channel,

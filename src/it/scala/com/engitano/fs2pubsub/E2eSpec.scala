@@ -1,3 +1,19 @@
+/*
+ * Copyright 2019 Engitano
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.engitano.fs2pubsub
 
 import scala.concurrent.ExecutionContext
@@ -13,7 +29,9 @@ import com.whisk.docker.{DockerContainer, DockerFactory, DockerKit, DockerReadyC
 
 class E2eSpec extends WordSpec with Matchers with DockerPubSubService with BeforeAndAfterAll {
 
+  import com.engitano.fs2pubsub.syntax._
   import HasAckId._
+
   implicit val contextShift: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
 
   override def beforeAll(): Unit = {
@@ -33,22 +51,30 @@ class E2eSpec extends WordSpec with Matchers with DockerPubSubService with Befor
       implicit val intDeserializer = Deserializer.from[IO, Int](b => BigInt(b).toInt)
       val cfg = GrpcPubsubConfig.local(DefaultGcpProject, DefaultPubsubPort)
 
-      def adminTopic[F[_]: ConcurrentEffect] = AdminClient.create[F](cfg)
+      def adminClient[F[_] : ConcurrentEffect]: Resource[F, AdminClient[F]] =
+        AdminClient.create[F](cfg)
 
-      def setup[F[_]: ConcurrentEffect] = adminTopic[F].use { c =>
+      val topicName = "test-topic"
+      val testSubscription = "test-sub"
+
+      def setup[F[_] : ConcurrentEffect]: F[Unit] = adminClient[F].use { c =>
         for {
-          _ <- c.createTopic(Topic(cfg.topicName("test-topic")), new Metadata())
-          _ <- c.createSubscription(Subscription(cfg.subscriptionName("test-sub"), cfg.topicName("test-topic")), new Metadata())
+          _ <- c.createTopic(Topic(cfg.topicName(topicName)), new Metadata())
+          _ <- c.createSubscription(Subscription(cfg.subscriptionName(testSubscription), cfg.topicName(topicName)), new Metadata())
         } yield ()
       }
 
-      def publisher[F[_]: ConcurrentEffect](implicit T: ToPubSubMessage[F, Int]) =
-        Publisher.stream[F,Int]("test-topic", cfg)(Stream.emits(1 to msgCount))
+      def publisher[F[_] : ConcurrentEffect](implicit T: ToPubSubMessage[F, Int]): Stream[F, String] =
+        Stream.emits[F, Int](1 to msgCount)
+          .toPubSub(topicName, cfg)
 
-      def subscriber[F[_]: ConcurrentEffect](implicit T: FromPubSubMessage[F, Int]) =
-        Subscriber.stream[F,Int]("test-sub", cfg)(r => r)
+      def subscriber[F[_] : ConcurrentEffect](implicit T: FromPubSubMessage[F, Int]): Stream[F, WithAckId[Int]] =
+        Subscriber.stream[F, Int](testSubscription, cfg)(r => r)
 
-      def run[F[_]](implicit E: ConcurrentEffect[F], T: ToPubSubMessage[F, Int], F: FromPubSubMessage[F, Int]) = for {
+      def run[F[_]](implicit
+                    E: ConcurrentEffect[F],
+                    T: ToPubSubMessage[F, Int],
+                    F: FromPubSubMessage[F, Int]): Stream[F, WithAckId[Int]] = for {
         _ <- Stream.eval(setup[F])
         ints <- subscriber[F].concurrently(publisher)
       } yield ints
@@ -56,7 +82,7 @@ class E2eSpec extends WordSpec with Matchers with DockerPubSubService with Befor
       run[IO]
         .take(msgCount)
         .compile.toList.attempt.unsafeRunSync() match {
-        case Right(v) => v.map(_.wrapped) shouldBe (1 to msgCount)
+        case Right(v)    => v.map(_.wrapped) shouldBe (1 to msgCount)
         case Left(value) => throw value
       }
     }

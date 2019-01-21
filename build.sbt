@@ -23,7 +23,7 @@ libraryDependencies ++= Seq (
   "com.whisk" %% "docker-testkit-impl-docker-java" % "0.9.8" % "it"
 
 )
-Defaults.itSettings
+Defaults.itSettings ++ headerSettings(IntegrationTest) ++ automateHeaderSettings(IntegrationTest)
 configs(IntegrationTest)
 //enablePlugins(Fs2Grpc)
 
@@ -33,5 +33,4 @@ PB.targets in Compile := Seq(
 
 
 resolvers += Resolver.sonatypeRepo("releases")
-
 addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.8")

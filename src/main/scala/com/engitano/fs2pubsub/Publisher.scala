@@ -79,7 +79,7 @@ object Publisher {
                                        (s: Stream[F, T])
                                        (implicit psm: ToPubSubMessage[F, T]): Stream[F, String] = {
     cfg.channelBuilder
-      .stream[F] flatMap { channelBuilder =>
+      .stream[F].flatMap[F, String] { channelBuilder =>
       s
         .chunkLimit(MAX_PUBSUB_MESSAGE_BATCH)
         .evalMap(c => c.traverse(psm.to))
@@ -95,4 +95,5 @@ object Publisher {
                              clientHeaders: Metadata): F[PublishResponse] =
     Fs2ClientCall[F](channel, PublisherGrpc.METHOD_PUBLISH, callOptions)
       .flatMap(_.unaryToUnaryCall(request, clientHeaders))
+
 }
