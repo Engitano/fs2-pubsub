@@ -1,3 +1,19 @@
+/*
+ * Copyright 2019 Engitano
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.engitano.fs2pubsub
 
 import cats.Functor
@@ -33,11 +49,6 @@ object HasAckId {
 
   def apply[T](implicit haid: HasAckId[T]): HasAckId[T] = haid
 
-  def `for`[T](f: T => String): HasAckId[T] =
-    new HasAckId[T] {
-    override def getAckId(t: T): String = f(t)
-  }
-
   implicit def receivedMessageHasAckId: HasAckId[ReceivedMessage] =
     new HasAckId[ReceivedMessage] {
     override def getAckId(t: ReceivedMessage): String = t.ackId
@@ -49,12 +60,12 @@ object HasAckId {
   }
 
   implicit class HasAckIdOps[T](t: T) {
-    def ackId(implicit h: HasAckId[T]) = h.getAckId(t)
+    def ackId(implicit h: HasAckId[T]): String = h.getAckId(t)
   }
 }
 
 trait LowPriorityDeserializerImplicits {
-  implicit def forByteArrayDeserializer[F[_]](implicit S: Sync[F], D: Deserializer[F, Array[Byte]]): Deserializer[F, Array[Byte]] =
+  implicit def forByteArrayDeserializer[F[_] : Deserializer[?[_], Array[Byte]]](implicit S: Sync[F]): Deserializer[F, Array[Byte]] =
     new Deserializer[F, Array[Byte]] {
     override def deserialize(b: Option[Array[Byte]]): F[Array[Byte]] = b match {
       case Some(b) => S.delay(b)
@@ -103,15 +114,15 @@ object FromPubSubMessage extends FromPubSubMessageLowPriorityImplicits {
 object Subscriber {
   import HasAckId._
 
+  private val ACK_DEADLINE_SECONDS = 10
 
   def stream[F[_],A](subscription: String, cfg: GrpcPubsubConfig) : PubSubStream[F, A] =
-    PubSubStream[F, A](cfg.host, cfg.subscriptionName(subscription), cfg.callOps)
+    PubSubStream[F, A](cfg.host, cfg.subscriptionName(subscription), cfg)
 
-  case class PubSubStream[F[_],A] private[Subscriber](host: String, subscription: String, callOps: CallOptions){
+  case class PubSubStream[F[_],A] private[Subscriber](host: String, subscription: String, cfg: GrpcPubsubConfig){
     def apply[B: HasAckId](f: Stream[F,WithAckId[A]] => Stream[F, B])
                                 (implicit S: ConcurrentEffect[F], FP: FromPubSubMessage[F, A]): Stream[F, B] = {
-      ManagedChannelBuilder
-        .forTarget(host)
+      cfg.channelBuilder
         .stream[F] flatMap { channel =>
 
         Stream.eval(Queue.unbounded[F, StreamingPullRequest]) flatMap { requestQueue =>
@@ -120,8 +131,8 @@ object Subscriber {
           }
 
           for {
-            _ <- Stream.eval(queueNext(StreamingPullRequest(subscription, Seq(), Seq(), Seq(), 10)))
-            resp <- streamingPull(channel, callOps, requestQueue.dequeue, new Metadata())
+            _ <- Stream.eval(queueNext(StreamingPullRequest(subscription, Seq(), Seq(), Seq(), ACK_DEADLINE_SECONDS)))
+            resp <- streamingPull(channel, cfg.callOps, requestQueue.dequeue, new Metadata())
               .evalMap(_.receivedMessages.toList.traverse[F,WithAckId[A]](r => FP.from(r).map(t => WithAckId(t, r.ackId))))
               .flatMap(_.foldLeft[Stream[F,WithAckId[A]]](Stream.empty)((s,n) => s ++ Stream.emit(n)))
             st <- f(Stream.emit(resp))

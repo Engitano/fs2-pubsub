@@ -1,3 +1,19 @@
+/*
+ * Copyright 2019 Engitano
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.engitano.fs2pubsub
 
 import cats.{Applicative, Functor}
@@ -20,11 +36,11 @@ trait LowPrioritySerializerImplicits {
 object Serializer extends LowPrioritySerializerImplicits{
   def apply[F[_], T](implicit s: Serializer[F,T]): Serializer[F,T] = s
 
-  def from[F[_], T](f: T => Array[Byte])(implicit S: Sync[F]) = new Serializer[F, T] {
+  def from[F[_], T](f: T => Array[Byte])(implicit S: Sync[F]): Serializer[F, T] = new Serializer[F, T] {
     override def serialize(t: T): F[Array[Byte]] = S.delay(f(t))
   }
 
-  def fromF[F[_], T](f: T => F[Array[Byte]]) = new Serializer[F, T] {
+  def fromF[F[_], T](f: T => F[Array[Byte]]): Serializer[F, T] = new Serializer[F, T] {
     override def serialize(t: T): F[Array[Byte]] = f(t)
   }
 }
@@ -60,9 +76,9 @@ object Publisher {
   private val MAX_PUBSUB_MESSAGE_BATCH = 1000
 
   def stream[F[_]: ConcurrentEffect, T](topic: String, cfg: GrpcPubsubConfig)
-                                       (s: Stream[F, T])(implicit psm: ToPubSubMessage[F, T]) = {
-    ManagedChannelBuilder
-      .forTarget(cfg.host)
+                                       (s: Stream[F, T])
+                                       (implicit psm: ToPubSubMessage[F, T]): Stream[F, String] = {
+    cfg.channelBuilder
       .stream[F] flatMap { channelBuilder =>
       s
         .chunkLimit(MAX_PUBSUB_MESSAGE_BATCH)
