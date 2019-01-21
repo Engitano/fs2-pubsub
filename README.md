@@ -1,4 +1,4 @@
-#fs2 PubSub
+# fs2 PubSub
 
 ##### A GCP PubSub client based on [fs2](https://fs2.io/guide.html)
 
