@@ -10,7 +10,7 @@ jobs:
             - ivy
       - run: sbt ";project fs2-pubsub-core;set Global / patchVersion := Some(\"$CIRCLE_BUILD_NUM\");it:test;publish;"
       - save_cache:
-          key:
+          key: ivy
           paths:
             - "~/.ivy2/cache"
             - "~/.sbt"
