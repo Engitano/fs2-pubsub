@@ -16,7 +16,10 @@
 
 package com.engitano.fs2pubsub
 
+import java.util.UUID
+
 import cats.Functor
+import cats.effect.concurrent.Ref
 import cats.implicits._
 import cats.effect.{ConcurrentEffect, Sync}
 import com.google.api.pubsub.{ReceivedMessage, StreamingPullRequest, StreamingPullResponse, SubscriberGrpc}
@@ -161,3 +164,4 @@ object Subscriber {
     }
   }
 }
+
