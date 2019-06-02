@@ -6,13 +6,27 @@
 Basic Usage:
 
 ```scala
+      import com.engitano.fs2pubsub.syntax._
+      val topicName = "test-topic"
+      val testSubscription = "test-sub"
+      implicit val intSerializer = Serializer.from[IO, Int](i => BigInt(i).toByteArray)
+      implicit val intDeserializer = Deserializer.from[IO, Int](b => BigInt(b).toInt)
+  
       val config = GrpcPubsubConfig.local(DefaultGcpProject, DefaultPubsubPort)
-      val publishStream = Stream.emits[IO, Int](1 to 1000).toPubSub(topicName, config))
-      val subscribeStream = Subscriber.stream[IO, Int](testSubscription, config) { s =>
-        s.map(_.peek(businessLogic))
+  
+      val program = Publisher[IO](config).use { implicit pub =>
+        Subscriber[IO](config).use { implicit sub =>
+  
+          def businessLogic(i: WithAckId[Int]) = IO.delay(println(i))
+  
+          val publishStream = Stream.emits[IO, Int](1 to 1000).toPubSub(topicName)
+          val subscribeStream = sub.consume[Int](testSubscription) { intStream =>
+            intStream.evalTap(businessLogic)
+          }
+  
+          (publishStream >> subscribeStream).compile.drain.attempt
+        }
       }
-
-      def businessLogic(s: Int) = println(s)
-
-      val result = (publishStream >> subscribeStream).compile.drain.attempt.unsafeRunSync()
+  
+      program.unsafeRunSync()
 ```

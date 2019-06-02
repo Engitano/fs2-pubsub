@@ -6,6 +6,9 @@ object Common {
     scalaVersion := "2.12.8",
     organizationName := "Engitano",
     startYear := Some(2019),
-    licenses += ("MIT", new URL("http://opensource.org/licenses/MIT"))
+    licenses += ("MIT", new URL("http://opensource.org/licenses/MIT")),
+    scalacOptions ++= Seq(
+      "-Ypartial-unification"
+    )
   )
 }
