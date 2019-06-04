@@ -34,8 +34,8 @@ import fs2.concurrent.Queue
 
 
 trait Publisher[F[_]] {
-  def stream[T](topic: String)(s: Stream[F, T])(implicit psm: ToPubSubMessage[F, T]): Stream[F, String]
-  def publish[T: ToPubSubMessage[F, ?]](topic: String, t: T): F[Unit]
+  def stream[T](topic: String)(s: Stream[F, T])(implicit psm: ToPubSubMessage[T]): Stream[F, String]
+  def publish[T: ToPubSubMessage[?]](topic: String, t: T): F[Unit]
   def createTopic(topic: String): F[Topic]
   def listTopics(): Stream[F, String]
   def listTopicSubscriptions(topic: String): Stream[F, String]
@@ -52,16 +52,16 @@ object Publisher {
     buildStub[F, PublisherFs2Grpc[?[_], io.grpc.Metadata]](cfg)((ch, o) => PublisherFs2Grpc.stub[F](ch, o)).map { publisher =>
       new Publisher[F] {
 
-        def stream[T](topic: String)(s: Stream[F, T])(implicit psm: ToPubSubMessage[F, T]): Stream[F, String] = {
+        def stream[T](topic: String)(s: Stream[F, T])(implicit psm: ToPubSubMessage[T]): Stream[F, String] = {
           s.chunkLimit(MAX_PUBSUB_MESSAGE_BATCH)
-            .evalMap(c => c.traverse(psm.to))
+            .map(c => c.map(psm.to))
             .evalMap(p => publisher.publish(PublishRequest(cfg.topicName(topic), p.toList), new Metadata()))
             .flatMap(pr => Stream.emits(pr.messageIds))
         }
 
-        def publish[T: ToPubSubMessage[F, ?]](topic: String, t: T): F[Unit] = ToPubSubMessage[F, T].to(t).flatMap { m =>
-          publisher.publish(PublishRequest(cfg.topicName(topic), List(m)), new Metadata()).as(())
-        }
+        def publish[T](topic: String, t: T)(implicit psm: ToPubSubMessage[T]): F[Unit] =
+          publisher.publish(PublishRequest(cfg.topicName(topic), List(psm.to(t))), new Metadata()).as(())
+
 
         def createTopic(topic: String): F[Topic] = {
           publisher.createTopic(Topic(cfg.topicName(topic)), new Metadata())

@@ -21,28 +21,21 @@
 
 package com.engitano.fs2pubsub
 
-import cats.Applicative
-import cats.effect.Sync
-
-trait Serializer[F[_], T] {
-  def serialize(t: T): F[Array[Byte]]
+trait Serializer[T] {
+  def serialize(t: T): Array[Byte]
 }
 
 trait LowPrioritySerializerImplicits {
-  implicit def fromByteArraySerializer[F[_]](implicit A: Applicative[F]): Serializer[F, Array[Byte]] =
-    new Serializer[F, Array[Byte]] {
-      override def serialize(t: Array[Byte]): F[Array[Byte]] = A.pure(t)
+  implicit def fromByteArraySerializer: Serializer[Array[Byte]] =
+    new Serializer[Array[Byte]] {
+      override def serialize(t: Array[Byte]): Array[Byte] = t
     }
 }
 
 object Serializer extends LowPrioritySerializerImplicits {
-  def apply[F[_], T](implicit s: Serializer[F, T]): Serializer[F, T] = s
+  def apply[ T](implicit s: Serializer[T]): Serializer[T] = s
 
-  def from[F[_], T](f: T => Array[Byte])(implicit S: Sync[F]): Serializer[F, T] = new Serializer[F, T] {
-    override def serialize(t: T): F[Array[Byte]] = S.delay(f(t))
-  }
-
-  def fromF[F[_], T](f: T => F[Array[Byte]]): Serializer[F, T] = new Serializer[F, T] {
-    override def serialize(t: T): F[Array[Byte]] = f(t)
+  def from[T](f: T => Array[Byte]): Serializer[T] = new Serializer[T] {
+    override def serialize(t: T): Array[Byte] = f(t)
   }
 }

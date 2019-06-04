@@ -51,8 +51,8 @@ class E2eSpec extends WordSpec with Matchers with DockerPubSubService with Befor
 
       val msgCount = 2000
 
-      implicit val intSerializer = Serializer.from[IO, Int](i => BigInt(i).toByteArray)
-      implicit val intDeserializer = Deserializer.from[IO, Int](b => BigInt(b).toInt)
+      implicit val intSerializer = Serializer.from[Int](i => BigInt(i).toByteArray)
+      implicit val intDeserializer = Deserializer.from[Int](b => BigInt(b).toInt)
       val cfg = GrpcPubsubConfig.local(DefaultGcpProject, DefaultPubsubPort)
 
       def publisher[F[_] : ConcurrentEffect]: Resource[F, Publisher[F]] =
@@ -74,22 +74,14 @@ class E2eSpec extends WordSpec with Matchers with DockerPubSubService with Befor
       val program = Publisher[IO](cfg).use { implicit pub =>
         Subscriber[IO](cfg).use { implicit sub =>
 
-          def publisher(implicit T: ToPubSubMessage[IO, Int]): Stream[IO, String] =
+          def publisher(implicit T: ToPubSubMessage[Int]) =
             Stream.emits[IO, Int](1 to msgCount)
               .toPubSub(topicName)
 
-          def subscriber(implicit T: FromPubSubMessage[Int]): Stream[IO, PubSubResponse[Int]] =
+          def subscriber(implicit T: FromPubSubMessage[Int]) =
             sub.consume[Int](testSubscription)(r => r)
 
-          def run(implicit
-                        E: ConcurrentEffect[IO],
-                        T: ToPubSubMessage[IO, Int],
-                        F: FromPubSubMessage[Int]): Stream[IO, PubSubResponse[Int]] = for {
-            _ <- Stream.eval(setup[IO])
-            ints <- subscriber.concurrently(publisher)
-          } yield ints
-
-          run
+          setup[IO] *> subscriber.concurrently(publisher)
             .take(msgCount)
             .compile.toList
         }

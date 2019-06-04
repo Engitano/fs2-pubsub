@@ -67,10 +67,10 @@ package object fs2pubsub {
 
   object syntax {
 
-    implicit def toOps[F[_] : ConcurrentEffect, T](s: Stream[F, T])(implicit psm: ToPubSubMessage[F, T], pub: Publisher[F]): PublisherSyntax[F, T] =
+    implicit def toOps[F[_] : ConcurrentEffect, T](s: Stream[F, T])(implicit psm: ToPubSubMessage[T], pub: Publisher[F]): PublisherSyntax[F, T] =
       new PublisherSyntax[F, T](s)
 
-    class PublisherSyntax[F[_] : ConcurrentEffect, T](s: Stream[F, T])(implicit psm: ToPubSubMessage[F, T], pub: Publisher[F]) {
+    class PublisherSyntax[F[_] : ConcurrentEffect, T](s: Stream[F, T])(implicit psm: ToPubSubMessage[T], pub: Publisher[F]) {
       def toPubSub(topic: String): Stream[F, String] = pub.stream(topic)(s)
     }
   }

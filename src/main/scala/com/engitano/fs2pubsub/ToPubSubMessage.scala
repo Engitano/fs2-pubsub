@@ -21,30 +21,27 @@
 
 package com.engitano.fs2pubsub
 
-import cats.syntax.functor._
-import cats.Functor
-import cats.effect.Sync
 import com.google.protobuf.ByteString
 import com.google.pubsub.v1.PubsubMessage
 
-trait ToPubSubMessage[F[_], T] {
-  def to(t: T): F[PubsubMessage]
+trait ToPubSubMessage[ T] {
+  def to(t: T): PubsubMessage
 }
 
 object ToPubSubMessage extends LowPriorityToPubSubMessageImplicits {
-  def apply[F[_], T](implicit psm: ToPubSubMessage[F, T]): ToPubSubMessage[F, T] = psm
+  def apply[F[_], T](implicit psm: ToPubSubMessage[T]): ToPubSubMessage[T] = psm
 
 }
 
 trait LowPriorityToPubSubMessageImplicits {
 
-  implicit def fromPubSubMessage[F[_]](implicit A: Sync[F]): ToPubSubMessage[F, PubsubMessage] =
-    new ToPubSubMessage[F, PubsubMessage] {
-      override def to(t: PubsubMessage): F[PubsubMessage] = A.delay(t)
+  implicit def fromPubSubMessage: ToPubSubMessage[PubsubMessage] =
+    new ToPubSubMessage[PubsubMessage] {
+      override def to(t: PubsubMessage): PubsubMessage = t
     }
 
-  implicit def fromSerializerFromPubSubMessage[F[_]: Functor, T](implicit ser: Serializer[F, T]): ToPubSubMessage[F, T] =
-    new ToPubSubMessage[F, T] {
-      override def to(t: T): F[PubsubMessage] = ser.serialize(t).map(m => PubsubMessage(ByteString.copyFrom(m)))
+  implicit def fromSerializerFromPubSubMessage[ T](implicit ser: Serializer[T]): ToPubSubMessage[T] =
+    new ToPubSubMessage[T] {
+      override def to(t: T): PubsubMessage = PubsubMessage(ByteString.copyFrom(ser.serialize(t)))
     }
 }

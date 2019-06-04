@@ -27,9 +27,9 @@ import cats.effect.Sync
 import scala.util.Try
 
 object Deserializer extends LowPriorityDeserializerImplicits {
-  def apply[F[_], T](implicit d: Deserializer[T]): Deserializer[T] = d
+  def apply[T](implicit d: Deserializer[T]): Deserializer[T] = d
 
-  def from[F[_], T](f: Array[Byte] => T)(implicit S: Sync[F]): Deserializer[T] =
+  def from[T](f: Array[Byte] => T): Deserializer[T] =
     new Deserializer[T] {
       override def deserialize(b: Option[Array[Byte]]): Either[SerializationException, T] = b match {
         case Some(b) => Try(f(b)).toEither.leftMap(t => SerializationFailedException(t.getMessage))
