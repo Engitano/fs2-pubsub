@@ -5,41 +5,48 @@
 
 Basic Usage:
 
-```scala    
-  val cfg = GrpcPubsubConfig.local(DefaultGcpProject, DefaultPubsubPort)
+```scala
+      val cfg = GrpcPubsubConfig.local(DefaultGcpProject, DefaultPubsubPort)
 
-  val topicName        = "test-topic"
-  val testSubscription = "test-sub"
+      val topicName        = "test-topic"
+      val testSubscription = "test-sub"
+      val msgCount         = 2000
 
-  val setup: IO[Unit] = (Publisher[IO](cfg), Subscriber[IO](cfg)).tupled.use { pubsub =>
-    val (pub, sub) = pubsub
-    for {
-      _ <- pub.createTopic(topicName)
-      _ <- sub.createSubscription(testSubscription, topicName)
-    } yield ()
-  }
+      def businessLogic(i: Int)              = IO.unit
+      def deadLetter(p: PubSubResponse[Int]) = IO.unit
 
-  val msgCount = 2000
-  val program = (Publisher[IO](cfg), Subscriber[IO](cfg)).tupled.use { pubsub =>
-    implicit val (pub, sub) = pubsub
+      val program = (Publisher[IO](cfg), Subscriber[IO](cfg)).tupled.use { pubsub =>
+        implicit val (pub, sub) = pubsub
 
-    val publisher =
-      Stream
-        .emits[IO, Int](1 to msgCount)
-        .toPubSub(topicName)
+        val setup =
+          pub.createTopic(topicName) *>
+            sub.createSubscription(testSubscription, topicName)
 
-    val subscriber =
-      sub.consume[Int](testSubscription)(r => r)
+        val publish =
+          Stream
+            .emits[IO, Int](1 to msgCount)
+            .toPubSub(topicName)
 
-    setup *> subscriber
-      .concurrently(publisher)
-      .take(msgCount)
-      .compile
-      .toList
-      .nested
-      .map(_.body)
-      .value
-  }
+        val subscribe =
+          sub.consume[Int](testSubscription) { s =>
+            s.evalTap(
+                msg =>
+                  msg.body match {
+                    case Right(i) => businessLogic(i)
+                    case _        => deadLetter(msg)
+                  }
+              )
+          }
 
-  program.unsafeRunSync().map(_.right.get) shouldBe (1 to msgCount).toList
+        setup *> subscribe
+          .concurrently(publish)
+          .take(msgCount)
+          .compile
+          .toList
+          .nested
+          .map(_.body)
+          .value
+      }
+
+      program.unsafeRunSync().map(_.right.get) shouldBe (1 to msgCount).toList
 ```

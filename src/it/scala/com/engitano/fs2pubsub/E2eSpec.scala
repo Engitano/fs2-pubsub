@@ -56,29 +56,36 @@ class E2eSpec extends WordSpec with Matchers with DockerPubSubService with Befor
 
       val topicName        = "test-topic"
       val testSubscription = "test-sub"
+      val msgCount         = 2000
 
-      val setup: IO[Unit] = (Publisher[IO](cfg), Subscriber[IO](cfg)).tupled.use { pubsub =>
-        val (pub, sub) = pubsub
-        for {
-          _ <- pub.createTopic(topicName)
-          _ <- sub.createSubscription(testSubscription, topicName)
-        } yield ()
-      }
+      def businessLogic(i: Int)              = IO.unit
+      def deadLetter(p: PubSubResponse[Int]) = IO.unit
 
-      val msgCount = 2000
       val program = (Publisher[IO](cfg), Subscriber[IO](cfg)).tupled.use { pubsub =>
         implicit val (pub, sub) = pubsub
 
-        val publisher =
+        val setup =
+          pub.createTopic(topicName) *>
+            sub.createSubscription(testSubscription, topicName)
+
+        val publish =
           Stream
             .emits[IO, Int](1 to msgCount)
             .toPubSub(topicName)
 
-        val subscriber =
-          sub.consume[Int](testSubscription)(r => r)
+        val subscribe =
+          sub.consume[Int](testSubscription) { s =>
+            s.evalTap(
+                msg =>
+                  msg.body match {
+                    case Right(i) => businessLogic(i)
+                    case _        => deadLetter(msg)
+                  }
+              )
+          }
 
-        setup *> subscriber
-          .concurrently(publisher)
+        setup *> subscribe
+          .concurrently(publish)
           .take(msgCount)
           .compile
           .toList
