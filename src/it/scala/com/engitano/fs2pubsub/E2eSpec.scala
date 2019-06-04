@@ -49,52 +49,48 @@ class E2eSpec extends WordSpec with Matchers with DockerPubSubService with Befor
   "The Generated clients" should {
     "be able to read and write to PubSub" in {
 
-      val msgCount = 2000
-
-      implicit val intSerializer = Serializer.from[Int](i => BigInt(i).toByteArray)
+      implicit val intSerializer   = Serializer.from[Int](i => BigInt(i).toByteArray)
       implicit val intDeserializer = Deserializer.from[Int](b => BigInt(b).toInt)
+
       val cfg = GrpcPubsubConfig.local(DefaultGcpProject, DefaultPubsubPort)
 
-      def publisher[F[_] : ConcurrentEffect]: Resource[F, Publisher[F]] =
-        Publisher[F](cfg)
-
-      def subscriber[F[_] : ConcurrentEffect]: Resource[F, Subscriber[F]] =
-        Subscriber[F](cfg)
-
-      val topicName = "test-topic"
+      val topicName        = "test-topic"
       val testSubscription = "test-sub"
 
-      def setup[F[_] : ConcurrentEffect]: F[Unit] = (subscriber[F], publisher[F]).tupled.use { c =>
+      val setup: IO[Unit] = (Publisher[IO](cfg), Subscriber[IO](cfg)).tupled.use { pubsub =>
+        val (pub, sub) = pubsub
         for {
-          _ <- c._2.createTopic(topicName)
-          _ <- c._1.createSubscription(testSubscription, topicName)
+          _ <- pub.createTopic(topicName)
+          _ <- sub.createSubscription(testSubscription, topicName)
         } yield ()
       }
 
-      val program = Publisher[IO](cfg).use { implicit pub =>
-        Subscriber[IO](cfg).use { implicit sub =>
+      val msgCount = 2000
+      val program = (Publisher[IO](cfg), Subscriber[IO](cfg)).tupled.use { pubsub =>
+        implicit val (pub, sub) = pubsub
 
-          def publisher(implicit T: ToPubSubMessage[Int]) =
-            Stream.emits[IO, Int](1 to msgCount)
-              .toPubSub(topicName)
+        val publisher =
+          Stream
+            .emits[IO, Int](1 to msgCount)
+            .toPubSub(topicName)
 
-          def subscriber(implicit T: FromPubSubMessage[Int]) =
-            sub.consume[Int](testSubscription)(r => r)
+        val subscriber =
+          sub.consume[Int](testSubscription)(r => r)
 
-          setup[IO] *> subscriber.concurrently(publisher)
-            .take(msgCount)
-            .compile.toList
-        }
+        setup *> subscriber
+          .concurrently(publisher)
+          .take(msgCount)
+          .compile
+          .toList
+          .nested
+          .map(_.body)
+          .value
       }
 
-      program.attempt.unsafeRunSync() match {
-        case Right(v) => v.map(_.body.right.get) shouldBe (1 to msgCount)
-        case Left(value) => throw value
-      }
+      program.unsafeRunSync().map(_.right.get) shouldBe (1 to msgCount).toList
     }
   }
 }
-
 
 trait DockerPubSubService extends DockerKit {
 
@@ -110,7 +106,6 @@ trait DockerPubSubService extends DockerKit {
     .withPorts(DefaultPubsubPort -> Some(DefaultPubsubPort))
     .withReadyChecker(DockerReadyChecker.LogLineContains("Server started"))
     .withCommand("--project", DefaultGcpProject, "--log-http", "--host-port", s"0.0.0.0:$DefaultPubsubPort")
-
 
   abstract override def dockerContainers = pubsub :: super.dockerContainers
 }
