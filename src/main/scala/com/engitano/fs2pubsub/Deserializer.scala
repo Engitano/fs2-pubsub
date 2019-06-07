@@ -22,7 +22,6 @@
 package com.engitano.fs2pubsub
 
 import cats.syntax.either._
-import cats.effect.Sync
 
 import scala.util.Try
 

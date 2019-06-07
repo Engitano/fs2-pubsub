@@ -61,7 +61,7 @@ class E2eSpec extends WordSpec with Matchers with DockerPubSubService with Befor
       def businessLogic(i: Int)              = IO.unit
       def deadLetter(p: PubSubResponse[Int]) = IO.unit
 
-      val program = (Publisher[IO](cfg), Subscriber[IO](cfg)).tupled.use { pubsub =>
+      val program = (Publisher.resource[IO](cfg), Subscriber.resource[IO](cfg)).tupled.use { pubsub =>
         implicit val (pub, sub) = pubsub
 
         val setup =

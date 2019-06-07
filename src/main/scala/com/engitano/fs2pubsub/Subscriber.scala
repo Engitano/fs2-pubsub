@@ -21,16 +21,16 @@
 
 package com.engitano.fs2pubsub
 
-import cats.Functor
 import cats.effect.{ConcurrentEffect, Resource, Sync}
 import cats.implicits._
 import com.engitano.fs2pubsub.Subscriber.SubscriptionConsumer
+import com.google.protobuf.duration.Duration
+import com.google.pubsub.v1
 import com.google.pubsub.v1._
 import fs2.concurrent.Queue
 import fs2.{Pipe, Stream}
 import io.grpc._
-import com.google.protobuf.duration.Duration
-import com.google.pubsub.v1
+import org.lyranthe.fs2_grpc.java_runtime.syntax.all._
 
 
 trait Subscriber[F[_]] {
@@ -116,7 +116,7 @@ object Subscriber {
         val kickOff = Stream.eval(queueNext(StreamingPullRequest(subscription, Seq(), Seq(), Seq(), ACK_DEADLINE_SECONDS)))
         val doPull = subscriber
           .streamingPull(requestQueue.dequeue, new Metadata())
-          .map(_.receivedMessages.map(r => PubSubResponse(r.ackId, FromPubSubMessage[A].from(r))))
+          .map(_.receivedMessages.map(r => PubSubResponse(r.ackId, fps.from(r).leftMap(ex => InvalidPubSubResponse(ex, r)))))
 
         for {
           chunks        <- kickOff >> doPull
@@ -127,23 +127,37 @@ object Subscriber {
     }
   }
 
+  def stream[F[_]: ConcurrentEffect](cfg: GrpcPubsubConfig): fs2.Stream[F,Subscriber[F]] =
+    cfg.channelBuilder.stream[F].map(c => apply(cfg, c))
+
+  def resource[F[_]: ConcurrentEffect](cfg: GrpcPubsubConfig): Resource[F,Subscriber[F]] =
+    cfg.channelBuilder.resource[F].map(c => apply(cfg, c))
+
+  def apply[F[_]: ConcurrentEffect](cfg: GrpcPubsubConfig): F[Subscriber[F]] =
+    Sync[F].delay(cfg.channelBuilder.build()).map(c => apply(cfg, SubscriberFs2Grpc.stub[F](c)))
+
+  def unsafe[F[_]: ConcurrentEffect](cfg: GrpcPubsubConfig): Subscriber[F] =
+    apply(cfg, SubscriberFs2Grpc.stub[F](cfg.channelBuilder.build()))
+
+  def apply[F[_]: ConcurrentEffect](cfg: GrpcPubsubConfig, channel: Channel): Subscriber[F] =
+    apply(cfg, SubscriberFs2Grpc.stub[F](channel))
+
   //noinspection ScalaStyle
-  def apply[F[_]: ConcurrentEffect](cfg: GrpcPubsubConfig): Resource[F, Subscriber[F]] =
-    buildStub[F, SubscriberFs2Grpc[?[_], io.grpc.Metadata]](cfg)((ch, o) => SubscriberFs2Grpc.stub[F](ch, o)).map { subscriber =>
+  def apply[F[_]: ConcurrentEffect](cfg: GrpcPubsubConfig, subscriber: SubscriberFs2Grpc[F, Metadata]): Subscriber[F] =
       new Subscriber[F] {
         override def consume[A](subscription: String): SubscriptionConsumer[F, A] = {
           new SubscriptionConsumer(cfg.subscriptionName(subscription), subscriber)
         }
 
         override def createSubscription(
-            name: String,
-            topic: String,
-            ackDeadlineSecs: Option[Int] = None,
-            retainAckedMsgs: Boolean = false,
-            messageRetentionDurationSeconds: Option[Int] = None,
-            withMsgOrdering: Boolean = false,
-            msgTtl: Option[Int] = None
-        ): F[Unit] = {
+                                         name: String,
+                                         topic: String,
+                                         ackDeadlineSecs: Option[Int] = None,
+                                         retainAckedMsgs: Boolean = false,
+                                         messageRetentionDurationSeconds: Option[Int] = None,
+                                         withMsgOrdering: Boolean = false,
+                                         msgTtl: Option[Int] = None
+                                       ): F[Unit] = {
           subscriber
             .createSubscription(
               v1.Subscription(
@@ -163,25 +177,25 @@ object Subscriber {
         def getSubscription(name: String): F[com.engitano.fs2pubsub.Subscription] =
           subscriber
             .getSubscription(GetSubscriptionRequest(cfg.subscriptionName(name)), new Metadata())
-          .map(s => com.engitano.fs2pubsub.Subscription(
-            s.name,
-            s.topic,
-            s.ackDeadlineSeconds,
-            s.retainAckedMessages,
-            s.messageRetentionDuration.map(d => scala.concurrent.duration.Duration.fromNanos(d.nanos)),
-            s.enableMessageOrdering,
-            s.expirationPolicy.flatMap(_.ttl).map(d => scala.concurrent.duration.Duration.fromNanos(d.nanos))
-          ))
+            .map(s => com.engitano.fs2pubsub.Subscription(
+              s.name,
+              s.topic,
+              s.ackDeadlineSeconds,
+              s.retainAckedMessages,
+              s.messageRetentionDuration.map(d => scala.concurrent.duration.Duration.fromNanos(d.nanos)),
+              s.enableMessageOrdering,
+              s.expirationPolicy.flatMap(_.ttl).map(d => scala.concurrent.duration.Duration.fromNanos(d.nanos))
+            ))
 
         def updateSubscription(
-            name: String,
-            topic: String,
-            ackDeadlineSecs: Option[Int],
-            retainAckedMsgs: Boolean = false,
-            messageRetentionDurationSeconds: Option[Int] = None,
-            withMsgOrdering: Boolean = false,
-            msgTtl: Option[Int] = None
-        ): F[Unit] = {
+                                name: String,
+                                topic: String,
+                                ackDeadlineSecs: Option[Int],
+                                retainAckedMsgs: Boolean = false,
+                                messageRetentionDurationSeconds: Option[Int] = None,
+                                withMsgOrdering: Boolean = false,
+                                msgTtl: Option[Int] = None
+                              ): F[Unit] = {
           subscriber
             .updateSubscription(
               UpdateSubscriptionRequest(
@@ -230,10 +244,10 @@ object Subscriber {
             .as(())
 
         def pull[A: FromPubSubMessage](
-            subscription: String,
-            returnImmediately: Boolean = false,
-            maxMessages: Option[Int] = None
-        ): F[Seq[Either[SerializationException, A]]] =
+                                        subscription: String,
+                                        returnImmediately: Boolean = false,
+                                        maxMessages: Option[Int] = None
+                                      ): F[Seq[Either[SerializationException, A]]] =
           subscriber
             .pull(PullRequest(subscription, returnImmediately, maxMessages.getOrElse(0)), new Metadata())
             .map(r => r.receivedMessages.map(m => FromPubSubMessage[A].from(m)))
@@ -271,5 +285,4 @@ object Subscriber {
         def client: SubscriberFs2Grpc[F, Metadata] = subscriber
 
       }
-    }
 }

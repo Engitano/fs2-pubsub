@@ -21,7 +21,14 @@
 
 package com.engitano.fs2pubsub
 
-import com.google.pubsub.v1.ReceivedMessage
+import cats.effect.ConcurrentEffect
+import fs2.Stream
 
-case class PubSubResponse[A](ackId: String, body: Either[InvalidPubSubResponse, A])
-case class InvalidPubSubResponse(ex: SerializationException, response: ReceivedMessage)
+package object syntax {
+  implicit def toOps[F[_] : ConcurrentEffect, T](s: Stream[F, T])(implicit psm: ToPubSubMessage[T], pub: Publisher[F]): PublisherSyntax[F, T] =
+    new PublisherSyntax[F, T](s)
+
+  class PublisherSyntax[F[_] : ConcurrentEffect, T](s: Stream[F, T])(implicit psm: ToPubSubMessage[T], pub: Publisher[F]) {
+    def toPubSub(topic: String): Stream[F, String] = pub.stream(topic)(s)
+  }
+}

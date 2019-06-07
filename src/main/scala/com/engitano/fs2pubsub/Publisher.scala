@@ -21,17 +21,13 @@
 
 package com.engitano.fs2pubsub
 
-import cats.implicits._
-import cats.{Applicative, Functor}
-import cats.implicits._
 import cats.effect.{ConcurrentEffect, Resource, Sync}
+import cats.implicits._
 import com.google.pubsub.v1._
-import com.google.protobuf.ByteString
-import io.grpc._
 import fs2.Stream
 import fs2.concurrent.Queue
-
-
+import io.grpc._
+import org.lyranthe.fs2_grpc.java_runtime.syntax.all._
 
 trait Publisher[F[_]] {
   def stream[T](topic: String)(s: Stream[F, T])(implicit psm: ToPubSubMessage[T]): Stream[F, String]
@@ -47,64 +43,79 @@ object Publisher {
 
   private val MAX_PUBSUB_MESSAGE_BATCH = 1000
 
+  def stream[F[_]: ConcurrentEffect](cfg: GrpcPubsubConfig): fs2.Stream[F,Publisher[F]] =
+    cfg.channelBuilder.stream[F].map(c => apply(cfg, c))
+
+  def resource[F[_]: ConcurrentEffect](cfg: GrpcPubsubConfig): Resource[F,Publisher[F]] =
+    cfg.channelBuilder.resource[F].map(c => apply(cfg, c))
+
+  def apply[F[_]: ConcurrentEffect](cfg: GrpcPubsubConfig): F[Publisher[F]] =
+    Sync[F].delay(cfg.channelBuilder.build()).map(c => apply(cfg, PublisherFs2Grpc.stub[F](c)))
+
+  def unsafe[F[_]: ConcurrentEffect](cfg: GrpcPubsubConfig): Publisher[F] =
+    apply(cfg, PublisherFs2Grpc.stub[F](cfg.channelBuilder.build()))
+
+  def apply[F[_]: ConcurrentEffect](cfg: GrpcPubsubConfig, channel: Channel): Publisher[F] =
+    apply(cfg, PublisherFs2Grpc.stub[F](channel))
+
   //noinspection ScalaStyle
-  def apply[F[_]: ConcurrentEffect](cfg: GrpcPubsubConfig): Resource[F, Publisher[F]] =
-    buildStub[F, PublisherFs2Grpc[?[_], io.grpc.Metadata]](cfg)((ch, o) => PublisherFs2Grpc.stub[F](ch, o)).map { publisher =>
-      new Publisher[F] {
+  def apply[F[_] : ConcurrentEffect](cfg: GrpcPubsubConfig, publisher: PublisherFs2Grpc[F, Metadata]): Publisher[F] =
+    new Publisher[F] {
 
-        def stream[T](topic: String)(s: Stream[F, T])(implicit psm: ToPubSubMessage[T]): Stream[F, String] = {
-          s.chunkLimit(MAX_PUBSUB_MESSAGE_BATCH)
-            .map(c => c.map(psm.to))
-            .evalMap(p => publisher.publish(PublishRequest(cfg.topicName(topic), p.toList), new Metadata()))
-            .flatMap(pr => Stream.emits(pr.messageIds))
-        }
+      def stream[T](topic: String)(s: Stream[F, T])(implicit psm: ToPubSubMessage[T]): Stream[F, String] = {
+        s.chunkLimit(MAX_PUBSUB_MESSAGE_BATCH)
+          .map(c => c.map(psm.to))
+          .evalMap(p => publisher.publish(PublishRequest(cfg.topicName(topic), p.toList), new Metadata()))
+          .flatMap(pr => Stream.emits(pr.messageIds))
+      }
 
-        def publish[T](topic: String, t: T)(implicit psm: ToPubSubMessage[T]): F[Unit] =
-          publisher.publish(PublishRequest(cfg.topicName(topic), List(psm.to(t))), new Metadata()).as(())
+      def publish[T](topic: String, t: T)(implicit psm: ToPubSubMessage[T]): F[Unit] =
+        publisher.publish(PublishRequest(cfg.topicName(topic), List(psm.to(t))), new Metadata()).as(())
 
 
-        def createTopic(topic: String): F[Topic] = {
-          publisher.createTopic(Topic(cfg.topicName(topic)), new Metadata())
-        }
+      def createTopic(topic: String): F[Topic] = {
+        publisher.createTopic(Topic(cfg.topicName(topic)), new Metadata())
+      }
 
-        def listTopics(): Stream[F, String] = {
-          Stream.eval(Queue.unbounded[F, Option[String]]).flatMap { queue =>
-            def nextPage(token: Option[String]): F[ListTopicsResponse] =
-              publisher
-                .listTopics(ListTopicsRequest(cfg.project, 0, token.getOrElse("")), new Metadata())
-                .flatTap(r => r.topics.toList.traverse[F, Unit](t => queue.enqueue1(t.name.split("/").lastOption)))
-                .flatTap(r => nextPage(Option(r.nextPageToken).filter(_.nonEmpty)))
+      def listTopics(): Stream[F, String] = {
+        Stream.eval(Queue.unbounded[F, Option[String]]).flatMap { queue =>
+          def nextPage(token: Option[String]): F[ListTopicsResponse] =
+            publisher
+              .listTopics(ListTopicsRequest(cfg.project, 0, token.getOrElse("")), new Metadata())
+              .flatTap(r => r.topics.toList.traverse[F, Unit](t => queue.enqueue1(t.name.split("/").lastOption)))
+              .flatTap(r => nextPage(Option(r.nextPageToken).filter(_.nonEmpty)))
 
-            Stream.eval(nextPage(None)) >> queue.dequeue.unNoneTerminate
-          }
-        }
-
-        def listTopicSubscriptions(topic: String): Stream[F, String] = {
-          Stream.eval(Queue.unbounded[F, Option[String]]).flatMap { queue =>
-            def nextPage(token: Option[String]): F[ListTopicSubscriptionsResponse] =
-              publisher
-                .listTopicSubscriptions(ListTopicSubscriptionsRequest(cfg.topicName(topic), 0, token.getOrElse("")), new Metadata())
-                .flatTap(r => r.subscriptions.toList.traverse[F, Unit](t => queue.enqueue1(t.split("/").lastOption)))
-                .flatTap(r => nextPage(Option(r.nextPageToken).filter(_.nonEmpty)))
-
-            Stream.eval(nextPage(None)) >> queue.dequeue.unNoneTerminate
-          }
-        }
-        def listTopicSnapshots(topic: String): Stream[F, String] = {
-          Stream.eval(Queue.unbounded[F, Option[String]]).flatMap { queue =>
-            def nextPage(token: Option[String]): F[ListTopicSnapshotsResponse] =
-              publisher
-                .listTopicSnapshots(ListTopicSnapshotsRequest(cfg.topicName(topic), 0, token.getOrElse("")), new Metadata())
-                .flatTap(r => r.snapshots.toList.traverse[F, Unit](t => queue.enqueue1(t.split("/").lastOption)))
-                .flatTap(r => nextPage(Option(r.nextPageToken).filter(_.nonEmpty)))
-
-            Stream.eval(nextPage(None)) >> queue.dequeue.unNoneTerminate
-          }
-        }
-
-        def deleteTopic(topic: String): F[Unit] = {
-          publisher.deleteTopic(DeleteTopicRequest(cfg.topicName(topic)), new Metadata()).as(())
+          Stream.eval(nextPage(None)) >> queue.dequeue.unNoneTerminate
         }
       }
+
+      def listTopicSubscriptions(topic: String): Stream[F, String] = {
+        Stream.eval(Queue.unbounded[F, Option[String]]).flatMap { queue =>
+          def nextPage(token: Option[String]): F[ListTopicSubscriptionsResponse] =
+            publisher
+              .listTopicSubscriptions(ListTopicSubscriptionsRequest(cfg.topicName(topic), 0, token.getOrElse("")), new Metadata())
+              .flatTap(r => r.subscriptions.toList.traverse[F, Unit](t => queue.enqueue1(t.split("/").lastOption)))
+              .flatTap(r => nextPage(Option(r.nextPageToken).filter(_.nonEmpty)))
+
+          Stream.eval(nextPage(None)) >> queue.dequeue.unNoneTerminate
+        }
+      }
+
+      def listTopicSnapshots(topic: String): Stream[F, String] = {
+        Stream.eval(Queue.unbounded[F, Option[String]]).flatMap { queue =>
+          def nextPage(token: Option[String]): F[ListTopicSnapshotsResponse] =
+            publisher
+              .listTopicSnapshots(ListTopicSnapshotsRequest(cfg.topicName(topic), 0, token.getOrElse("")), new Metadata())
+              .flatTap(r => r.snapshots.toList.traverse[F, Unit](t => queue.enqueue1(t.split("/").lastOption)))
+              .flatTap(r => nextPage(Option(r.nextPageToken).filter(_.nonEmpty)))
+
+          Stream.eval(nextPage(None)) >> queue.dequeue.unNoneTerminate
+        }
+      }
+
+      def deleteTopic(topic: String): F[Unit] = {
+        publisher.deleteTopic(DeleteTopicRequest(cfg.topicName(topic)), new Metadata()).as(())
+      }
     }
+
 }
