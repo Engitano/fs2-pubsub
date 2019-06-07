@@ -8,7 +8,7 @@ jobs:
       - restore_cache:
           keys:
             - ivy
-      - run: sbt ";project fs2-pubsub-core;set Global / patchVersion := Some(\"$CIRCLE_BUILD_NUM\");it:test;publish"
+      - run: sbt ";set Global / patchVersion := Some(\"$CIRCLE_BUILD_NUM\");it:test;publish"
       - save_cache:
           key: ivy
           paths:
@@ -20,4 +20,4 @@ workflows:
   build_and_test:
     jobs:
     - build:
-        context: prod
+        context: release
