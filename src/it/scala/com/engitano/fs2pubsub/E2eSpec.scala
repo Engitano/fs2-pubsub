@@ -39,11 +39,15 @@ class E2eSpec extends WordSpec with Matchers with DockerPubSubService with Befor
   implicit val contextShift: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
 
   override def beforeAll(): Unit = {
-    startAllOrFail()
+    if (!Option(System.getenv("CIRCLECI")).exists(_.nonEmpty)) {
+      startAllOrFail()
+    }
   }
 
   override def afterAll(): Unit = {
-    stopAllQuietly()
+    if (!Option(System.getenv("CIRCLECI")).exists(_.nonEmpty)) {
+      stopAllQuietly()
+    }
   }
 
   "The Generated clients" should {
