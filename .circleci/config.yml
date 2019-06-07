@@ -4,8 +4,8 @@ jobs:
     docker:
       - image: mtranter/sbt-protoc:1.2.8_2.12
       - image: mtranter/gcp-pubsub-emulator:latest
-          environment:
-            PUBSUB_PROJECT_ID: test-project
+        environment:
+          PUBSUB_PROJECT_ID: test-project
     working_directory: ~/fs2-pubsub
     steps:
       - checkout
