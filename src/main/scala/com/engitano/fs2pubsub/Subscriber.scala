@@ -134,13 +134,13 @@ object Subscriber {
     cfg.channelBuilder.resource[F].map(c => apply(cfg, c))
 
   def apply[F[_]: ConcurrentEffect](cfg: GrpcPubsubConfig): F[Subscriber[F]] =
-    Sync[F].delay(cfg.channelBuilder.build()).map(c => apply(cfg, SubscriberFs2Grpc.stub[F](c)))
+    Sync[F].delay(cfg.channelBuilder.build()).map(c => apply(cfg, SubscriberFs2Grpc.stub[F](c, cfg.callOps)))
 
   def unsafe[F[_]: ConcurrentEffect](cfg: GrpcPubsubConfig): Subscriber[F] =
-    apply(cfg, SubscriberFs2Grpc.stub[F](cfg.channelBuilder.build()))
+    apply(cfg, SubscriberFs2Grpc.stub[F](cfg.channelBuilder.build(), cfg.callOps))
 
   def apply[F[_]: ConcurrentEffect](cfg: GrpcPubsubConfig, channel: Channel): Subscriber[F] =
-    apply(cfg, SubscriberFs2Grpc.stub[F](channel))
+    apply(cfg, SubscriberFs2Grpc.stub[F](channel, cfg.callOps))
 
   //noinspection ScalaStyle
   def apply[F[_]: ConcurrentEffect](cfg: GrpcPubsubConfig, subscriber: SubscriberFs2Grpc[F, Metadata]): Subscriber[F] =

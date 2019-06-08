@@ -40,7 +40,7 @@ trait LowPriorityToPubSubMessageImplicits {
       override def to(t: PubsubMessage): PubsubMessage = t
     }
 
-  implicit def fromSerializerFromPubSubMessage[ T](implicit ser: Serializer[T]): ToPubSubMessage[T] =
+  implicit def fromSerializerFromPubSubMessage[T](implicit ser: Serializer[T]): ToPubSubMessage[T] =
     new ToPubSubMessage[T] {
       override def to(t: T): PubsubMessage = PubsubMessage(ByteString.copyFrom(ser.serialize(t)))
     }
