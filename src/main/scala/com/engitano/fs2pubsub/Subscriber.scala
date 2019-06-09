@@ -221,7 +221,7 @@ object Subscriber {
             def nextPage(token: Option[String]): F[ListSubscriptionsResponse] =
               subscriber
                 .listSubscriptions(ListSubscriptionsRequest(cfg.project, 0, token.getOrElse("")), new Metadata())
-                .flatTap(r => r.subscriptions.toList.traverse[F, Unit](t => queue.enqueue1(t.name.split("/").lastOption)))
+                .flatTap(r => r.subscriptions.toList.map(_.name.split("/").last).toQueue(queue))
                 .flatTap(r => nextPage(Option(r.nextPageToken).filter(_.nonEmpty)))
 
             Stream.eval(nextPage(None)) >> queue.dequeue.unNoneTerminate

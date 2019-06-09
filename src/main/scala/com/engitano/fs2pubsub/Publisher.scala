@@ -21,6 +21,7 @@
 
 package com.engitano.fs2pubsub
 
+import com.engitano.fs2pubsub._
 import cats.effect.{ConcurrentEffect, Resource, Sync}
 import cats.implicits._
 import com.google.pubsub.v1._
@@ -43,10 +44,10 @@ object Publisher {
 
   private val MAX_PUBSUB_MESSAGE_BATCH = 1000
 
-  def stream[F[_]: ConcurrentEffect](cfg: GrpcPubsubConfig): fs2.Stream[F,Publisher[F]] =
+  def stream[F[_]: ConcurrentEffect](cfg: GrpcPubsubConfig): fs2.Stream[F, Publisher[F]] =
     cfg.channelBuilder.stream[F].map(c => apply(cfg, c))
 
-  def resource[F[_]: ConcurrentEffect](cfg: GrpcPubsubConfig): Resource[F,Publisher[F]] =
+  def resource[F[_]: ConcurrentEffect](cfg: GrpcPubsubConfig): Resource[F, Publisher[F]] =
     cfg.channelBuilder.resource[F].map(c => apply(cfg, c))
 
   def apply[F[_]: ConcurrentEffect](cfg: GrpcPubsubConfig): F[Publisher[F]] =
@@ -59,7 +60,7 @@ object Publisher {
     apply(cfg, PublisherFs2Grpc.stub[F](channel, cfg.callOps))
 
   //noinspection ScalaStyle
-  def apply[F[_] : ConcurrentEffect](cfg: GrpcPubsubConfig, publisher: PublisherFs2Grpc[F, Metadata]): Publisher[F] =
+  def apply[F[_]: ConcurrentEffect](cfg: GrpcPubsubConfig, publisher: PublisherFs2Grpc[F, Metadata]): Publisher[F] =
     new Publisher[F] {
 
       def stream[T](topic: String)(s: Stream[F, T])(implicit psm: ToPubSubMessage[T]): Stream[F, String] = {
@@ -72,7 +73,6 @@ object Publisher {
       def publish[T](topic: String, t: T)(implicit psm: ToPubSubMessage[T]): F[Unit] =
         publisher.publish(PublishRequest(cfg.topicName(topic), List(psm.to(t))), new Metadata()).as(())
 
-
       def createTopic(topic: String): F[Topic] = {
         publisher.createTopic(Topic(cfg.topicName(topic)), new Metadata())
       }
@@ -82,7 +82,7 @@ object Publisher {
           def nextPage(token: Option[String]): F[ListTopicsResponse] =
             publisher
               .listTopics(ListTopicsRequest(cfg.project, 0, token.getOrElse("")), new Metadata())
-              .flatTap(r => r.topics.toList.traverse[F, Unit](t => queue.enqueue1(t.name.split("/").lastOption)))
+              .flatTap(r => r.topics.toList.map(_.name.split("/").last).toQueue(queue))
               .flatTap(r => nextPage(Option(r.nextPageToken).filter(_.nonEmpty)))
 
           Stream.eval(nextPage(None)) >> queue.dequeue.unNoneTerminate
@@ -94,7 +94,7 @@ object Publisher {
           def nextPage(token: Option[String]): F[ListTopicSubscriptionsResponse] =
             publisher
               .listTopicSubscriptions(ListTopicSubscriptionsRequest(cfg.topicName(topic), 0, token.getOrElse("")), new Metadata())
-              .flatTap(r => r.subscriptions.toList.traverse[F, Unit](t => queue.enqueue1(t.split("/").lastOption)))
+              .flatTap(r => r.subscriptions.toList.map(_.split("/").last).toQueue(queue))
               .flatTap(r => nextPage(Option(r.nextPageToken).filter(_.nonEmpty)))
 
           Stream.eval(nextPage(None)) >> queue.dequeue.unNoneTerminate
@@ -106,7 +106,7 @@ object Publisher {
           def nextPage(token: Option[String]): F[ListTopicSnapshotsResponse] =
             publisher
               .listTopicSnapshots(ListTopicSnapshotsRequest(cfg.topicName(topic), 0, token.getOrElse("")), new Metadata())
-              .flatTap(r => r.snapshots.toList.traverse[F, Unit](t => queue.enqueue1(t.split("/").lastOption)))
+              .flatTap(r => r.snapshots.toList.map(_.split("/").last).toQueue(queue))
               .flatTap(r => nextPage(Option(r.nextPageToken).filter(_.nonEmpty)))
 
           Stream.eval(nextPage(None)) >> queue.dequeue.unNoneTerminate
