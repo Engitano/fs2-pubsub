@@ -220,7 +220,7 @@ object Subscriber {
           Stream.eval(Queue.unbounded[F, Option[String]]).flatMap { queue =>
             def nextPage(token: String): F[ListSubscriptionsResponse] =
               subscriber
-                .listSubscriptions(ListSubscriptionsRequest(cfg.project, 0, token), new Metadata())
+                .listSubscriptions(ListSubscriptionsRequest(cfg.projectPath, 0, token), new Metadata())
                 .flatTap(r => r.subscriptions.toList.map(_.name.split("/").last).toQueue(queue))
                 .flatTap(r => Option(r.nextPageToken).filter(_.nonEmpty).traverse(nextPage) )
 
@@ -260,7 +260,7 @@ object Subscriber {
           Stream.eval(Queue.unbounded[F, Option[com.engitano.fs2pubsub.Snapshot]]).flatMap { queue =>
             def nextPage(token: Option[String]): F[ListSnapshotsResponse] =
               subscriber
-                .listSnapshots(ListSnapshotsRequest(cfg.project, 0, token.getOrElse("")), new Metadata())
+                .listSnapshots(ListSnapshotsRequest(cfg.projectPath, 0, token.getOrElse("")), new Metadata())
                 .flatTap(
                   r =>
                     r.snapshots.toList
