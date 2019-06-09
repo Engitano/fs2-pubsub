@@ -21,8 +21,12 @@
 
 package com.engitano.fs2pubsub
 
+import java.io.FileInputStream
+
 import cats.effect._
 import cats.implicits._
+import com.google.auth.Credentials
+import com.google.auth.oauth2.GoogleCredentials
 import com.spotify.docker.client.{DefaultDockerClient, DockerClient}
 import com.whisk.docker.impl.spotify.SpotifyDockerFactory
 import com.whisk.docker.{DockerContainer, DockerFactory, DockerKit, DockerReadyChecker}
@@ -51,12 +55,13 @@ class E2eSpec extends WordSpec with Matchers with DockerPubSubService with Befor
   }
 
   "The Generated clients" should {
+
+    val cfg = GrpcPubsubConfig.local(DefaultGcpProject, DefaultPubsubPort)
     "be able to read and write to PubSub" in {
 
       implicit val intSerializer   = Serializer.from[Int](i => BigInt(i).toByteArray)
       implicit val intDeserializer = Deserializer.from[Int](b => BigInt(b).toInt)
 
-      val cfg = GrpcPubsubConfig.local(DefaultGcpProject, DefaultPubsubPort)
 
       val topicName        = "test-topic"
       val testSubscription = "test-sub"

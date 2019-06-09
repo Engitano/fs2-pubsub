@@ -26,8 +26,11 @@ import cats.implicits._
 import fs2.concurrent.Queue
 
 package object fs2pubsub {
-  private [fs2pubsub] implicit class ListHelpers[T](list: List[T]) {
-    def toQueue[F[_]: Sync](queue: Queue[F, Option[T]]) =
-      queue.enqueue1(list.headOption) *> list.tail.traverse[F, Unit](t => queue.enqueue1(Some(t)))
+  private[fs2pubsub] implicit class ListHelpers[T](list: List[T]) {
+    def toQueue[F[_]: Sync](queue: Queue[F, Option[T]]): F[Unit] = list match {
+      case Nil => queue.enqueue1(None)
+      case x :: xs => queue.enqueue1(Some(x)) *> xs.toQueue(queue)
+    }
+
   }
 }

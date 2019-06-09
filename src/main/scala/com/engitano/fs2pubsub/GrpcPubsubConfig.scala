@@ -47,6 +47,7 @@ object GrpcPubsubConfig {
 
 case class GrpcPubsubConfig(project: String, host: String, credentials: Option[CallCredentials], plainText: Boolean = false) {
 
+  def projectPath = s"projects/$project"
   def topicName(topic: String): String = s"projects/$project/topics/$topic"
   def subscriptionName(subscription: String): String = s"projects/$project/subscriptions/$subscription"
   def snapshotName(snapshot: String): String = s"projects/${project}/snapshots/${snapshot}"

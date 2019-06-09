@@ -218,13 +218,13 @@ object Subscriber {
 
         def listSubscriptions(): Stream[F, String] = {
           Stream.eval(Queue.unbounded[F, Option[String]]).flatMap { queue =>
-            def nextPage(token: Option[String]): F[ListSubscriptionsResponse] =
+            def nextPage(token: String): F[ListSubscriptionsResponse] =
               subscriber
-                .listSubscriptions(ListSubscriptionsRequest(cfg.project, 0, token.getOrElse("")), new Metadata())
+                .listSubscriptions(ListSubscriptionsRequest(cfg.project, 0, token), new Metadata())
                 .flatTap(r => r.subscriptions.toList.map(_.name.split("/").last).toQueue(queue))
-                .flatTap(r => nextPage(Option(r.nextPageToken).filter(_.nonEmpty)))
+                .flatTap(r => Option(r.nextPageToken).filter(_.nonEmpty).traverse(nextPage) )
 
-            Stream.eval(nextPage(None)) >> queue.dequeue.unNoneTerminate
+            Stream.eval(nextPage("")) >> queue.dequeue.unNoneTerminate
           }
         }
 
