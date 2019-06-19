@@ -2,6 +2,9 @@
 
 ##### A GCP PubSub client based on [fs2](https://fs2.io/guide.html)
 
+Very much in flux.
+
+Do not use this library!
 
 Basic Usage:
 
