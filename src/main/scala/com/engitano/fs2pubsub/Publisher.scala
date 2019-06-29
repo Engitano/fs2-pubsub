@@ -77,45 +77,32 @@ object Publisher {
         publisher.createTopic(Topic(cfg.topicName(topic)), new Metadata())
       }
 
-      def listTopics(): Stream[F, String] = {
-        Stream.eval(Queue.unbounded[F, Option[String]]).flatMap { queue =>
-          def nextPage(token: String): F[ListTopicsResponse] =
+      def listTopics(): Stream[F, String] =
+        pagedRec(
+          t => ListTopicsRequest(cfg.projectPath, 0, t),
+          r =>
             publisher
-              .listTopics(ListTopicsRequest(cfg.projectPath, 0, token), new Metadata())
-              .flatTap(r => r.topics.toList.map(_.name.split("/").last).toQueue(queue))
-              .flatTap(r => Option(r.nextPageToken).filter(_.nonEmpty).traverse(nextPage) )
+              .listTopics(r, new Metadata())
+        )(_.nextPageToken, _.topics.toList.map(_.name.split("/").last))
 
-          Stream.eval(nextPage("")) >> queue.dequeue.unNoneTerminate
-        }
-      }
-
-      def listTopicSubscriptions(topic: String): Stream[F, String] = {
-        Stream.eval(Queue.unbounded[F, Option[String]]).flatMap { queue =>
-          def nextPage(token: String): F[ListTopicSubscriptionsResponse] =
+      def listTopicSubscriptions(topic: String): Stream[F, String] =
+        pagedRec(
+          t => ListTopicSubscriptionsRequest(cfg.projectPath, 0, t),
+          r =>
             publisher
-              .listTopicSubscriptions(ListTopicSubscriptionsRequest(cfg.topicName(topic), 0, token), new Metadata())
-              .flatTap(r => r.subscriptions.toList.map(_.split("/").last).toQueue(queue))
-              .flatTap(r => Option(r.nextPageToken).filter(_.nonEmpty).traverse(nextPage) )
+              .listTopicSubscriptions(r, new Metadata())
+        )(_.nextPageToken, _.subscriptions.toList.map(_.split("/").last))
 
-          Stream.eval(nextPage("")) >> queue.dequeue.unNoneTerminate
-        }
-      }
-
-      def listTopicSnapshots(topic: String): Stream[F, String] = {
-        Stream.eval(Queue.unbounded[F, Option[String]]).flatMap { queue =>
-          def nextPage(token: String): F[ListTopicSnapshotsResponse] =
+      def listTopicSnapshots(topic: String): Stream[F, String] =
+        pagedRec(
+          t => ListTopicSnapshotsRequest(cfg.projectPath, 0, t),
+          r =>
             publisher
-              .listTopicSnapshots(ListTopicSnapshotsRequest(cfg.topicName(topic), 0, token), new Metadata())
-              .flatTap(r => r.snapshots.toList.map(_.split("/").last).toQueue(queue))
-              .flatTap(r => Option(r.nextPageToken).filter(_.nonEmpty).traverse(nextPage) )
-
-          Stream.eval(nextPage("")) >> queue.dequeue.unNoneTerminate
-        }
-      }
+              .listTopicSnapshots(r, new Metadata())
+        )(_.nextPageToken, _.snapshots.toList.map(_.split("/").last))
 
       def deleteTopic(topic: String): F[Unit] = {
         publisher.deleteTopic(DeleteTopicRequest(cfg.topicName(topic)), new Metadata()).as(())
       }
     }
-
 }

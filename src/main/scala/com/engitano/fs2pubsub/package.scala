@@ -21,16 +21,19 @@
 
 package com.engitano
 
-import cats.effect.Sync
-import cats.implicits._
-import fs2.concurrent.Queue
+import fs2.Stream
 
 package object fs2pubsub {
-  private[fs2pubsub] implicit class ListHelpers[T](list: List[T]) {
-    def toQueue[F[_]: Sync](queue: Queue[F, Option[T]]): F[Unit] = list match {
-      case Nil => queue.enqueue1(None)
-      case x :: xs => queue.enqueue1(Some(x)) *> xs.toQueue(queue)
-    }
 
+  private[fs2pubsub] def pagedRec[F[_], A, Req, Res, B](ctr: String => Req, call: Req => F[Res])(tk: Res => String, resp: Res => Seq[B]) = {
+    def nextPage(token: String): fs2.Stream[F, B] =
+      Stream
+        .eval(call(ctr(token)))
+        .flatMap(
+          r =>
+            Stream.emits(resp(r))
+              ++ Option(tk(r)).filter(_.nonEmpty).fold[Stream[F, B]](Stream.empty)(nextPage)
+        )
+    nextPage("")
   }
 }

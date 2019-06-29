@@ -85,8 +85,6 @@ trait Subscriber[F[_]] {
   def client: SubscriberFs2Grpc[F, Metadata]
 }
 
-case class PullResponse[A](a: A, ackId: String)
-
 case class Snapshot(
     name: String,
     topic: String,
@@ -247,17 +245,11 @@ object Subscriber {
           .as(())
       }
 
-      def listSubscriptions(): Stream[F, String] = {
-        Stream.eval(Queue.unbounded[F, Option[String]]).flatMap { queue =>
-          def nextPage(token: String): F[ListSubscriptionsResponse] =
-            subscriber
-              .listSubscriptions(ListSubscriptionsRequest(cfg.projectPath, 0, token), new Metadata())
-              .flatTap(r => r.subscriptions.toList.map(_.name.split("/").last).toQueue(queue))
-              .flatTap(r => Option(r.nextPageToken).filter(_.nonEmpty).traverse(nextPage))
-
-          Stream.eval(nextPage("")) >> queue.dequeue.unNoneTerminate
-        }
-      }
+      def listSubscriptions(): Stream[F, String] =
+        pagedRec(t => ListSubscriptionsRequest(cfg.projectPath, 0, t), t => subscriber.listSubscriptions(t, new Metadata()))(
+          _.nextPageToken,
+          _.subscriptions.toList.map(_.name.split("/").last)
+        )
 
       def deleteSubscription(subscription: String) =
         subscriber
