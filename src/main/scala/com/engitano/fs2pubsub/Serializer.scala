@@ -33,7 +33,7 @@ trait LowPrioritySerializerImplicits {
 }
 
 object Serializer extends LowPrioritySerializerImplicits {
-  def apply[ T](implicit s: Serializer[T]): Serializer[T] = s
+  def apply[T](implicit s: Serializer[T]): Serializer[T] = s
 
   def from[T](f: T => Array[Byte]): Serializer[T] = new Serializer[T] {
     override def serialize(t: T): Array[Byte] = f(t)

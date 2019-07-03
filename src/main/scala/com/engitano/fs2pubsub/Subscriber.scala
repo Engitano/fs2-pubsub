@@ -23,6 +23,7 @@ package com.engitano.fs2pubsub
 
 import cats.effect.{ConcurrentEffect, Resource, Sync}
 import cats.implicits._
+import com.engitano.fs2pubsub.implicits._
 import com.engitano.fs2pubsub.Subscriber.SubscriptionConsumer
 import com.google.protobuf.duration.Duration
 import com.google.pubsub.v1
@@ -85,27 +86,7 @@ trait Subscriber[F[_]] {
   def client: SubscriberFs2Grpc[F, Metadata]
 }
 
-case class Snapshot(
-    name: String,
-    topic: String,
-    expireTime: Option[com.google.protobuf.timestamp.Timestamp]
-)
-
-case class Subscription(
-    name: String,
-    topic: String,
-    ackDeadlineSeconds: Int,
-    retainAckedMessages: Boolean,
-    messageRetentionDuration: Option[scala.concurrent.duration.Duration],
-    enableMessageOrdering: Boolean,
-    messageTtl: Option[scala.concurrent.duration.Duration]
-)
-
-case class PushConfigAuth(serviceAccountEmail: String, audience: String)
-case class PushConfig(url: String, authConfig: Option[PushConfigAuth])
-
 object Subscriber {
-  import HasAckId._
 
   private val ACK_DEADLINE_SECONDS = 10
 

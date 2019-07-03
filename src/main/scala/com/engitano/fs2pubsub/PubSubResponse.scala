@@ -21,7 +21,34 @@
 
 package com.engitano.fs2pubsub
 
+import cats.syntax.functor._
+import cats.{Applicative, Eval, Traverse}
 import com.google.pubsub.v1.ReceivedMessage
 
 case class PubSubResponse[A](ackId: String, body: Either[InvalidPubSubResponse, A])
 case class InvalidPubSubResponse(ex: SerializationException, response: ReceivedMessage)
+
+trait PubSubResponseInstances {
+  implicit val catsDataTraverseForPubSubResponse: Traverse[PubSubResponse] = new Traverse[PubSubResponse] {
+    override def traverse[G[_], A, B](fa: PubSubResponse[A])(f: A => G[B])(implicit G: Applicative[G]): G[PubSubResponse[B]] =
+      fa.body match {
+        case Left(t)  => G.pure(PubSubResponse[B](fa.ackId, Left(t)))
+        case Right(a) => f(a).map(b => PubSubResponse[B](fa.ackId, Right(b)))
+      }
+
+    override def foldLeft[A, B](fa: PubSubResponse[A], b: B)(f: (B, A) => B): B = fa.body match {
+      case Right(a) => f(b, a)
+      case Left(_)  => b
+    }
+
+    override def foldRight[A, B](fa: PubSubResponse[A], lb: Eval[B])(f: (A, Eval[B]) => Eval[B]): Eval[B] = fa.body match {
+      case Right(a) => f(a, lb)
+      case Left(_)  => lb
+    }
+  }
+
+  implicit def hasAckIdForPubSubResponse[T]: HasAckId[PubSubResponse[T]] =
+    new HasAckId[PubSubResponse[T]] {
+      override def getAckId(t: PubSubResponse[T]): String = t.ackId
+    }
+}

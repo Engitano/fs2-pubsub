@@ -21,24 +21,24 @@
 
 package com.engitano.fs2pubsub
 
-import com.google.pubsub.v1.ReceivedMessage
+import com.spotify.docker.client.{DefaultDockerClient, DockerClient}
+import com.whisk.docker.impl.spotify.SpotifyDockerFactory
+import com.whisk.docker.{DockerContainer, DockerFactory, DockerKit, DockerReadyChecker}
 
-trait FromPubSubMessage[T] {
-  def from(rm: ReceivedMessage): Either[SerializationException, T]
-}
+trait DockerPubSubService extends DockerKit {
 
-object FromPubSubMessage extends FromPubSubMessageLowPriorityImplicits {
-  def apply[T](implicit fpm: FromPubSubMessage[T]): FromPubSubMessage[T] = fpm
-}
+  val DefaultPubsubPort = 8085
 
-trait FromPubSubMessageLowPriorityImplicits {
-  implicit def idFromPubsubMessage: FromPubSubMessage[ReceivedMessage] =
-    new FromPubSubMessage[ReceivedMessage] {
-      override def from(rm: ReceivedMessage) = Right(rm)
-    }
+  val DefaultGcpProject = "test-project"
 
-  implicit def deserializerFromPubsubMessage[F[_], T](implicit ds: Deserializer[T]): FromPubSubMessage[T] =
-    new FromPubSubMessage[T] {
-      override def from(rm: ReceivedMessage): Either[SerializationException, T] = ds.deserialize(rm.message.map(_.data.toByteArray))
-    }
+  private val client: DockerClient = DefaultDockerClient.fromEnv().build()
+
+  override implicit def dockerFactory: DockerFactory = new SpotifyDockerFactory(client)
+
+  val pubsub = DockerContainer("mtranter/gcp-pubsub-emulator:latest")
+    .withPorts(DefaultPubsubPort -> Some(DefaultPubsubPort))
+    .withReadyChecker(DockerReadyChecker.LogLineContains("Server started"))
+    .withCommand("--project", DefaultGcpProject, "--log-http", "--host-port", s"0.0.0.0:$DefaultPubsubPort")
+
+  abstract override def dockerContainers = pubsub :: super.dockerContainers
 }

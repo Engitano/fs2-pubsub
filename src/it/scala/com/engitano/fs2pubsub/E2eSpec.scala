@@ -21,12 +21,9 @@
 
 package com.engitano.fs2pubsub
 
-import java.io.FileInputStream
-
 import cats.effect._
 import cats.implicits._
-import com.google.auth.Credentials
-import com.google.auth.oauth2.GoogleCredentials
+import com.engitano.fs2pubsub.instances.pubsubresponse._
 import com.spotify.docker.client.{DefaultDockerClient, DockerClient}
 import com.whisk.docker.impl.spotify.SpotifyDockerFactory
 import com.whisk.docker.{DockerContainer, DockerFactory, DockerKit, DockerReadyChecker}
@@ -37,19 +34,18 @@ import scala.concurrent.ExecutionContext
 
 class E2eSpec extends WordSpec with Matchers with DockerPubSubService with BeforeAndAfterAll {
 
-  import HasAckId._
-  import com.engitano.fs2pubsub.syntax._
+  import com.engitano.fs2pubsub.syntax.publisher._
 
   implicit val contextShift: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
 
   override def beforeAll(): Unit = {
-    if (!Option(System.getenv("CIRCLECI")).exists(_.nonEmpty)) {
+    if (!sys.env.get("CIRCLECI").exists(_.nonEmpty)) {
       startAllOrFail()
     }
   }
 
   override def afterAll(): Unit = {
-    if (!Option(System.getenv("CIRCLECI")).exists(_.nonEmpty)) {
+    if (!sys.env.get("CIRCLECI").exists(_.nonEmpty)) {
       stopAllQuietly()
     }
   }
@@ -61,7 +57,6 @@ class E2eSpec extends WordSpec with Matchers with DockerPubSubService with Befor
 
       implicit val intSerializer   = Serializer.from[Int](i => BigInt(i).toByteArray)
       implicit val intDeserializer = Deserializer.from[Int](b => BigInt(b).toInt)
-
 
       val topicName        = "test-topic"
       val testSubscription = "test-sub"
@@ -85,12 +80,12 @@ class E2eSpec extends WordSpec with Matchers with DockerPubSubService with Befor
         val subscribe =
           sub.consume[Int](testSubscription) { s =>
             s.evalTap(
-                msg =>
-                  msg.body match {
-                    case Right(i) => businessLogic(i)
-                    case _        => deadLetter(msg)
-                  }
-              )
+              msg =>
+                msg.body match {
+                  case Right(i) => businessLogic(i)
+                  case _        => deadLetter(msg)
+                }
+            )
           }
 
         setup *> subscribe
@@ -108,20 +103,4 @@ class E2eSpec extends WordSpec with Matchers with DockerPubSubService with Befor
   }
 }
 
-trait DockerPubSubService extends DockerKit {
 
-  val DefaultPubsubPort = 8085
-
-  val DefaultGcpProject = "test-project"
-
-  private val client: DockerClient = DefaultDockerClient.fromEnv().build()
-
-  override implicit def dockerFactory: DockerFactory = new SpotifyDockerFactory(client)
-
-  val pubsub = DockerContainer("mtranter/gcp-pubsub-emulator:latest")
-    .withPorts(DefaultPubsubPort -> Some(DefaultPubsubPort))
-    .withReadyChecker(DockerReadyChecker.LogLineContains("Server started"))
-    .withCommand("--project", DefaultGcpProject, "--log-http", "--host-port", s"0.0.0.0:$DefaultPubsubPort")
-
-  abstract override def dockerContainers = pubsub :: super.dockerContainers
-}

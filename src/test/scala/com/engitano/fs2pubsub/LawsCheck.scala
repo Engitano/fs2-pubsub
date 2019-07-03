@@ -21,24 +21,22 @@
 
 package com.engitano.fs2pubsub
 
-import com.google.pubsub.v1.ReceivedMessage
+import cats.Eq
+import cats.tests.CatsSuite
+import org.scalacheck.ScalacheckShapeless._
+import cats.laws.discipline.TraverseTests
+import com.google.protobuf.ByteString
+import org.scalacheck.{Arbitrary, Gen}
 
-trait FromPubSubMessage[T] {
-  def from(rm: ReceivedMessage): Either[SerializationException, T]
-}
+class LawsCheck extends CatsSuite {
 
-object FromPubSubMessage extends FromPubSubMessageLowPriorityImplicits {
-  def apply[T](implicit fpm: FromPubSubMessage[T]): FromPubSubMessage[T] = fpm
-}
+  import instances.pubsubresponse._
 
-trait FromPubSubMessageLowPriorityImplicits {
-  implicit def idFromPubsubMessage: FromPubSubMessage[ReceivedMessage] =
-    new FromPubSubMessage[ReceivedMessage] {
-      override def from(rm: ReceivedMessage) = Right(rm)
-    }
+  implicit def eqTree[A: Eq]: Eq[PubSubResponse[A]] = Eq.fromUniversalEquals
 
-  implicit def deserializerFromPubsubMessage[F[_], T](implicit ds: Deserializer[T]): FromPubSubMessage[T] =
-    new FromPubSubMessage[T] {
-      override def from(rm: ReceivedMessage): Either[SerializationException, T] = ds.deserialize(rm.message.map(_.data.toByteArray))
-    }
+  implicit val arbitraryTimestamp: Arbitrary[ByteString] = Arbitrary[ByteString] { Gen.const(ByteString.EMPTY) }
+
+  checkAll("PubSubResponse.FunctorLaws", TraverseTests[PubSubResponse].functor[Int, Int, String])
+  checkAll("PubSubResponse.FoldableLaws", TraverseTests[PubSubResponse].foldable[Int, Int])
+  checkAll("PubSubResponse.TraversableLaws", TraverseTests[PubSubResponse].traverse[Int, Int, Int, Int, Option, Option])
 }

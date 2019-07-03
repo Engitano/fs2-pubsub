@@ -21,14 +21,9 @@
 
 package com.engitano.fs2pubsub
 
-import cats.effect.ConcurrentEffect
-import fs2.Stream
-
 package object syntax {
-  implicit def toOps[F[_] : ConcurrentEffect, T](s: Stream[F, T])(implicit psm: ToPubSubMessage[T], pub: Publisher[F]): PublisherSyntax[F, T] =
-    new PublisherSyntax[F, T](s)
-
-  class PublisherSyntax[F[_] : ConcurrentEffect, T](s: Stream[F, T])(implicit psm: ToPubSubMessage[T], pub: Publisher[F]) {
-    def toPubSub(topic: String): Stream[F, String] = pub.stream(topic)(s)
-  }
+  object publisher extends PublisherSyntax
+  object all       extends AllSyntax
 }
+
+trait AllSyntax extends PublisherSyntax with HasAckIdSyntax

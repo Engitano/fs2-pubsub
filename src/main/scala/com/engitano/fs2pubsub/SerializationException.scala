@@ -21,14 +21,14 @@
 
 package com.engitano.fs2pubsub
 
-sealed trait SerializationException extends Exception{
+sealed trait SerializationException extends Exception {
 
   val message: String
 
   override def getMessage: String = message
 }
 
-case object EmptyPubsubMessageException        extends SerializationException {
+case object EmptyPubsubMessageException extends SerializationException {
   override val message: String = "Pubsub response was empty"
 }
 case class SerializationFailedException(message: String) extends SerializationException

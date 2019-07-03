@@ -21,24 +21,12 @@
 
 package com.engitano.fs2pubsub
 
-import com.google.pubsub.v1.ReceivedMessage
-
-trait FromPubSubMessage[T] {
-  def from(rm: ReceivedMessage): Either[SerializationException, T]
-}
-
-object FromPubSubMessage extends FromPubSubMessageLowPriorityImplicits {
-  def apply[T](implicit fpm: FromPubSubMessage[T]): FromPubSubMessage[T] = fpm
-}
-
-trait FromPubSubMessageLowPriorityImplicits {
-  implicit def idFromPubsubMessage: FromPubSubMessage[ReceivedMessage] =
-    new FromPubSubMessage[ReceivedMessage] {
-      override def from(rm: ReceivedMessage) = Right(rm)
-    }
-
-  implicit def deserializerFromPubsubMessage[F[_], T](implicit ds: Deserializer[T]): FromPubSubMessage[T] =
-    new FromPubSubMessage[T] {
-      override def from(rm: ReceivedMessage): Either[SerializationException, T] = ds.deserialize(rm.message.map(_.data.toByteArray))
-    }
-}
+case class Subscription(
+    name: String,
+    topic: String,
+    ackDeadlineSeconds: Int,
+    retainAckedMessages: Boolean,
+    messageRetentionDuration: Option[scala.concurrent.duration.Duration],
+    enableMessageOrdering: Boolean,
+    messageTtl: Option[scala.concurrent.duration.Duration]
+)

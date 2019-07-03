@@ -24,7 +24,7 @@ package com.engitano.fs2pubsub
 import com.google.protobuf.ByteString
 import com.google.pubsub.v1.PubsubMessage
 
-trait ToPubSubMessage[ T] {
+trait ToPubSubMessage[T] {
   def to(t: T): PubsubMessage
 }
 

@@ -21,8 +21,6 @@
 
 package com.engitano.fs2pubsub
 
-import com.google.pubsub.v1.ReceivedMessage
-
 trait HasAckId[T] {
   def getAckId(t: T): String
 }
@@ -31,16 +29,9 @@ object HasAckId {
 
   def apply[T](implicit haid: HasAckId[T]): HasAckId[T] = haid
 
-  implicit def receivedMessageHasAckId: HasAckId[ReceivedMessage] =
-    new HasAckId[ReceivedMessage] {
-      override def getAckId(t: ReceivedMessage): String = t.ackId
-    }
+}
 
-  implicit def withAckIdHasAckId[T]: HasAckId[PubSubResponse[T]] =
-    new HasAckId[PubSubResponse[T]] {
-      override def getAckId(t: PubSubResponse[T]): String = t.ackId
-    }
-
+trait HasAckIdSyntax {
   implicit class HasAckIdOps[T](t: T) {
     def ackId(implicit h: HasAckId[T]): String = h.getAckId(t)
   }

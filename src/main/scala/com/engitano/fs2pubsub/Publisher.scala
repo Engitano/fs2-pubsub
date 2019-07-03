@@ -21,12 +21,10 @@
 
 package com.engitano.fs2pubsub
 
-import com.engitano.fs2pubsub._
 import cats.effect.{ConcurrentEffect, Resource, Sync}
 import cats.implicits._
 import com.google.pubsub.v1._
 import fs2.Stream
-import fs2.concurrent.Queue
 import io.grpc._
 import org.lyranthe.fs2_grpc.java_runtime.syntax.all._
 
@@ -105,4 +103,13 @@ object Publisher {
         publisher.deleteTopic(DeleteTopicRequest(cfg.topicName(topic)), new Metadata()).as(())
       }
     }
+}
+
+trait PublisherSyntax {
+  implicit def toOps[F[_]: ConcurrentEffect, T](s: Stream[F, T])(implicit psm: ToPubSubMessage[T], pub: Publisher[F]): PublisherSyntax[F, T] =
+    new PublisherSyntax[F, T](s)
+
+  class PublisherSyntax[F[_]: ConcurrentEffect, T](s: Stream[F, T])(implicit psm: ToPubSubMessage[T], pub: Publisher[F]) {
+    def toPubSub(topic: String): Stream[F, String] = pub.stream(topic)(s)
+  }
 }

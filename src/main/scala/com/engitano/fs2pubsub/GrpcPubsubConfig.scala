@@ -31,12 +31,11 @@ object GrpcPubsubConfig {
 
   private val apiEndpoint = "pubsub.googleapis.com"
 
-  def local(project: String, port: Int) : GrpcPubsubConfig =
+  def local(project: String, port: Int): GrpcPubsubConfig =
     new GrpcPubsubConfig(project, s"localhost:$port", None, true)
 
   def apply(project: String): GrpcPubsubConfig =
-    new GrpcPubsubConfig(project, apiEndpoint,
-      Some(MoreCallCredentials.from(GoogleCredentials.getApplicationDefault)))
+    new GrpcPubsubConfig(project, apiEndpoint, Some(MoreCallCredentials.from(GoogleCredentials.getApplicationDefault)))
 
   def apply(project: String, credentials: Credentials): GrpcPubsubConfig =
     new GrpcPubsubConfig(project, apiEndpoint, Some(MoreCallCredentials.from(credentials)))
@@ -47,15 +46,15 @@ object GrpcPubsubConfig {
 
 case class GrpcPubsubConfig(project: String, host: String, credentials: Option[CallCredentials], plainText: Boolean = false) {
 
-  def projectPath = s"projects/$project"
-  def topicName(topic: String): String = s"projects/$project/topics/$topic"
-  def subscriptionName(subscription: String): String = s"projects/$project/subscriptions/$subscription"
-  def snapshotName(snapshot: String): String = s"projects/${project}/snapshots/${snapshot}"
+  def projectPath: String                            = s"projects/$project"
+  def topicName(topic: String): String               = s"$projectPath/topics/$topic"
+  def subscriptionName(subscription: String): String = s"$projectPath/subscriptions/$subscription"
+  def snapshotName(snapshot: String): String         = s"$projectPath/snapshots/${snapshot}"
 
   private[fs2pubsub] def callOps = credentials.foldLeft(CallOptions.DEFAULT)(_ withCallCredentials _)
   private[fs2pubsub] def channelBuilder: ManagedChannelBuilder[_] = {
     val channel = ManagedChannelBuilder.forTarget(host)
-    if(plainText) {
+    if (plainText) {
       channel.usePlaintext()
     } else {
       channel

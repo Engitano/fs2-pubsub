@@ -23,22 +23,17 @@ package com.engitano.fs2pubsub
 
 import com.google.pubsub.v1.ReceivedMessage
 
-trait FromPubSubMessage[T] {
-  def from(rm: ReceivedMessage): Either[SerializationException, T]
+object instances {
+  object all             extends AllInstances
+  object receivedmessage extends ReceivedMessageInstances
+  object pubsubresponse  extends PubSubResponseInstances
 }
 
-object FromPubSubMessage extends FromPubSubMessageLowPriorityImplicits {
-  def apply[T](implicit fpm: FromPubSubMessage[T]): FromPubSubMessage[T] = fpm
-}
+trait AllInstances extends ReceivedMessageInstances with PubSubResponseInstances
+trait ReceivedMessageInstances {
 
-trait FromPubSubMessageLowPriorityImplicits {
-  implicit def idFromPubsubMessage: FromPubSubMessage[ReceivedMessage] =
-    new FromPubSubMessage[ReceivedMessage] {
-      override def from(rm: ReceivedMessage) = Right(rm)
-    }
-
-  implicit def deserializerFromPubsubMessage[F[_], T](implicit ds: Deserializer[T]): FromPubSubMessage[T] =
-    new FromPubSubMessage[T] {
-      override def from(rm: ReceivedMessage): Either[SerializationException, T] = ds.deserialize(rm.message.map(_.data.toByteArray))
+  implicit def hasAckIdForReceivedMessage[T]: HasAckId[ReceivedMessage] =
+    new HasAckId[ReceivedMessage] {
+      override def getAckId(t: ReceivedMessage): String = t.ackId
     }
 }
